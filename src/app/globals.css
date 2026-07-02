@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* -------------------------------------------------------------------------- */
+/* MeiCrypt Identity — global theme tokens                                    */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+  --muted: 241 245 249;
+  --muted-foreground: 100 116 139;
+  --border: 226 232 240;
+  --ring: 99 102 241;
+}
+
+.dark {
+  --background: 2 6 23;
+  --foreground: 248 250 252;
+  --muted: 15 23 42;
+  --muted-foreground: 148 163 184;
+  --border: 30 41 59;
+  --ring: 129 140 248;
+}
+
+@theme inline {
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-border: rgb(var(--border));
+  --color-ring: rgb(var(--ring));
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle background pattern used behind the auth split-screen. */
+.auth-hero-bg {
+  background-image:
+    radial-gradient(
+      circle at 15% 20%,
+      rgba(99, 102, 241, 0.35),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 85% 30%,
+      rgba(139, 92, 246, 0.35),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 50% 85%,
+      rgba(56, 189, 248, 0.25),
+      transparent 55%
+    );
+}

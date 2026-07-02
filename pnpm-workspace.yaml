@@ -1,0 +1,9 @@
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+# pnpm dependency-build allowlist for the MeiCrypt Identity frontend.
+# These native packages ship postinstall build scripts that must run so the
+# Next.js image pipeline (sharp) and module resolver (unrs-resolver) work.
+onlyBuiltDependencies:
+  - sharp
+  - unrs-resolver
