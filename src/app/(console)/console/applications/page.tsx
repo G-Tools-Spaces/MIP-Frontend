@@ -34,21 +34,25 @@ import { ApiError } from "@/lib/api/problem";
 import { useCurrentOrgId } from "@/stores/session-store";
 import { dateTime, relativeTime } from "@/lib/format";
 
+// The backend DTO uses `applicationType` (not `type`) and
+// `postLogoutRedirectUris` (not `logoutUris`). Form field names below use
+// the backend names verbatim so react-hook-form → payload is a straight
+// copy; anything else risks silent null-mapping and 400 responses.
 const schema = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(500).optional().or(z.literal("")),
-  type: z.enum(["WEB", "SPA", "MOBILE", "SERVICE", "NATIVE"]),
-  isPublic: z.boolean().default(false),
+  // DB check constraint only permits WEB/SPA/MOBILE/SERVICE — do not add
+  // NATIVE here until the backend + Flyway migration accept it too.
+  applicationType: z.enum(["WEB", "SPA", "MOBILE", "SERVICE"]),
   redirectUris: z.string().default(""),
-  logoutUris: z.string().default(""),
+  postLogoutRedirectUris: z.string().default(""),
 });
 type Values = {
   name: string;
   description?: string;
-  type: "WEB" | "SPA" | "MOBILE" | "SERVICE" | "NATIVE";
-  isPublic: boolean;
+  applicationType: "WEB" | "SPA" | "MOBILE" | "SERVICE";
   redirectUris: string;
-  logoutUris: string;
+  postLogoutRedirectUris: string;
 };
 
 const statusTone: Record<
@@ -91,23 +95,23 @@ export default function ApplicationsPage() {
     defaultValues: {
       name: "",
       description: "",
-      type: "WEB",
-      isPublic: false,
+      applicationType: "WEB",
       redirectUris: "",
-      logoutUris: "",
+      postLogoutRedirectUris: "",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: (values: Values) =>
       applicationsApi.create(orgId!, {
-        ...values,
+        name: values.name,
+        applicationType: values.applicationType,
         description: values.description || undefined,
         redirectUris: values.redirectUris
           .split("\n")
           .map((u) => u.trim())
           .filter(Boolean),
-        logoutUris: values.logoutUris
+        postLogoutRedirectUris: values.postLogoutRedirectUris
           .split("\n")
           .map((u) => u.trim())
           .filter(Boolean),
@@ -182,8 +186,10 @@ export default function ApplicationsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-1">
-                  <Badge tone={typeTone[app.type]}>{app.type}</Badge>
-                  {app.isPublic && <Badge tone="sky">public</Badge>}
+                  <Badge tone={typeTone[app.applicationType]}>
+                    {app.applicationType}
+                  </Badge>
+                  {!app.confidential && <Badge tone="sky">public</Badge>}
                 </div>
                 <dl className="grid grid-cols-2 gap-2 text-xs text-slate-500">
                   <div className="col-span-2 flex items-center justify-between">
@@ -195,7 +201,7 @@ export default function ApplicationsPage() {
                   <div>
                     <dt>Redirect URIs</dt>
                     <dd className="text-slate-700 dark:text-slate-200">
-                      {app.redirectUris.length}
+                      {(app.redirectUris ?? []).length}
                     </dd>
                   </div>
                   <div>
@@ -252,13 +258,12 @@ export default function ApplicationsPage() {
               <FieldError message={errors.name?.message} />
             </Field>
             <Field>
-              <Label htmlFor="type">Application type</Label>
-              <Select id="type" {...register("type")}>
+              <Label htmlFor="applicationType">Application type</Label>
+              <Select id="applicationType" {...register("applicationType")}>
                 <option value="WEB">Web (confidential)</option>
                 <option value="SPA">Single-page app (PKCE)</option>
                 <option value="MOBILE">Mobile (PKCE)</option>
                 <option value="SERVICE">Service (client_credentials)</option>
-                <option value="NATIVE">Native app</option>
               </Select>
             </Field>
           </div>
@@ -280,12 +285,14 @@ export default function ApplicationsPage() {
           </Field>
 
           <Field>
-            <Label htmlFor="logoutUris">Post-logout redirect URIs</Label>
+            <Label htmlFor="postLogoutRedirectUris">
+              Post-logout redirect URIs
+            </Label>
             <Textarea
-              id="logoutUris"
+              id="postLogoutRedirectUris"
               placeholder="https://app.example.com/goodbye"
               className="font-mono text-xs"
-              {...register("logoutUris")}
+              {...register("postLogoutRedirectUris")}
             />
             <FieldHint>One URI per line — used by Single Logout.</FieldHint>
           </Field>

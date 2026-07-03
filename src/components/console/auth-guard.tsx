@@ -20,6 +20,17 @@ import { tokenStore } from "@/lib/auth/token-store";
  *   the "Hydration failed because the server rendered HTML didn't match
  *   the client" error we hit previously when reading tokenStore in a
  *   useState initializer.
+ *
+ * Hydration race note:
+ *   The session-store rehydrates itself from sessionStorage on mount (see
+ *   `useSessionHydration`). Until that finishes, `status` sits at "idle".
+ *   If we redirect on "idle" we'll fight the login flow: TOTP verify
+ *   writes to tokenStore + status="authenticated", the router pushes to
+ *   /console, this guard mounts before the zustand subscription has flushed
+ *   the new status, sees `!authenticated` and bounces to /login.
+ *
+ *   Fix: wait for `hydrated` (or a positive tokenStore read) BEFORE ever
+ *   deciding "not authenticated".
  */
 export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -27,26 +38,39 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
   const router = useRouter();
   const pathname = usePathname();
   const status = useSession((s) => s.status);
+  const hydrated = useSession((s) => s.hydrated);
 
   const [mounted, setMounted] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
     // Runs on the client after hydration - safe to touch browser storage.
-    setAuthenticated(!!tokenStore.get() || status === "authenticated");
+    // We treat *any* of the following as "authenticated":
+    //   - status === "authenticated" (zustand slice already populated)
+    //   - a non-expired snapshot exists in tokenStore (survives hard refresh
+    //     and covers the tiny window between setSession() and the store
+    //     subscription firing in this component).
+    const snap = tokenStore.get();
+    const tokenValid = !!snap && !tokenStore.isExpired();
+    setAuthenticated(tokenValid || status === "authenticated");
     setMounted(true);
-  }, [status]);
+  }, [status, hydrated]);
 
   useEffect(() => {
-    if (mounted && !authenticated) {
-      const returnTo = encodeURIComponent(pathname ?? "/console");
-      router.replace(`/login?returnTo=${returnTo}`);
-    }
-  }, [mounted, authenticated, pathname, router]);
+    // Only bounce once we've had a chance to observe post-hydration state.
+    // If the session store has not hydrated yet, `status` may still be
+    // "idle" while a valid token already exists in sessionStorage —
+    // redirecting here would race the login flow.
+    if (!mounted) return;
+    if (!hydrated) return;
+    if (authenticated) return;
+    const returnTo = encodeURIComponent(pathname ?? "/console");
+    router.replace(`/login?returnTo=${returnTo}`);
+  }, [mounted, hydrated, authenticated, pathname, router]);
 
   // Server render + first client render (pre-hydration) — always spinner
   // so the server-rendered HTML matches what React sees on the client.
-  if (!mounted || !authenticated) {
+  if (!mounted || !hydrated || !authenticated) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-slate-500">
         <Loader2 className="h-5 w-5 animate-spin" />

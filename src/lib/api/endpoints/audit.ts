@@ -44,7 +44,7 @@ export const auditApi = {
   list: (organizationId: string, query: AuditQuery = {}) =>
     api
       .get<AuditPage>(
-        `/api/v1/organizations/${organizationId}/audit`,
+        `/api/v1/organizations/${organizationId}/audit/events`,
         { params: query },
       )
       .then((r) => r.data),

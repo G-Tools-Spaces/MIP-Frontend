@@ -130,11 +130,11 @@ export default function ApplicationDetailPage({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Type</span>
-              <Badge tone="indigo">{app.type}</Badge>
+              <Badge tone="indigo">{app.applicationType}</Badge>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Public client</span>
-              <span>{app.isPublic ? "Yes" : "No"}</span>
+              <span>{app.confidential ? "No" : "Yes"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Status</span>
@@ -167,10 +167,10 @@ export default function ApplicationDetailPage({
                 Redirect URIs
               </div>
               <ul className="space-y-1">
-                {app.redirectUris.length === 0 && (
+                {(app.redirectUris ?? []).length === 0 && (
                   <li className="text-slate-500">—</li>
                 )}
-                {app.redirectUris.map((u) => (
+                {(app.redirectUris ?? []).map((u) => (
                   <li
                     key={u}
                     className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-900"
@@ -186,10 +186,10 @@ export default function ApplicationDetailPage({
                 Post-logout URIs
               </div>
               <ul className="space-y-1">
-                {app.logoutUris.length === 0 && (
+                {(app.postLogoutRedirectUris ?? []).length === 0 && (
                   <li className="text-slate-500">—</li>
                 )}
-                {app.logoutUris.map((u) => (
+                {(app.postLogoutRedirectUris ?? []).map((u) => (
                   <li
                     key={u}
                     className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-1 font-mono text-xs dark:bg-slate-900"

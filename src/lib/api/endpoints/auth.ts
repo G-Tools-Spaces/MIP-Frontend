@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@/lib/api/client";
+import { env } from "@/env";
 
 /**
  * Auth endpoints — wire-compatible with the MIP Spring Boot backend
@@ -277,29 +278,44 @@ export const authApi = {
       })
       .then((r) => r.data);
 
-    let profile: LoginResponse["user"];
+    // Try to enrich the session with the /auth/me profile. If it fails for
+    // any reason (e.g. a transient 401 while Redis catches up) we MUST NOT
+    // block the login flow — fall back to a minimal profile derived from
+    // the token response. Anything that throws here would previously bubble
+    // up to the mfa-challenge form and get treated as an auth failure,
+    // yanking the user back to /login.
+    let profile: LoginResponse["user"] = {
+      id: tokens.userId,
+      email: "",
+      displayName: "",
+      emailVerified: true,
+    };
     try {
-      const me = await api.get<{
-        userId: string;
-        email: string;
-        displayName?: string;
-        emailVerified?: boolean;
-      }>("/api/v1/auth/me", {
-        headers: { Authorization: `Bearer ${tokens.accessToken}` },
+      // Use a bare axios call (not `api`) so the response interceptor's
+      // 401→refresh path can't fire and blow away the token we just got.
+      const meResponse = await fetch(`${env.apiBaseUrl}/api/v1/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${tokens.accessToken}`,
+          Accept: "application/json",
+        },
+        credentials: "include",
       });
-      profile = {
-        id: me.data.userId,
-        email: me.data.email,
-        displayName: me.data.displayName ?? me.data.email,
-        emailVerified: me.data.emailVerified ?? true,
-      };
+      if (meResponse.ok) {
+        const me = (await meResponse.json()) as {
+          userId: string;
+          email: string;
+          displayName?: string;
+          emailVerified?: boolean;
+        };
+        profile = {
+          id: me.userId,
+          email: me.email,
+          displayName: me.displayName ?? me.email,
+          emailVerified: me.emailVerified ?? true,
+        };
+      }
     } catch {
-      profile = {
-        id: tokens.userId,
-        email: "",
-        displayName: "",
-        emailVerified: true,
-      };
+      // Keep the fallback profile — login must not fail because of /me.
     }
 
     return {

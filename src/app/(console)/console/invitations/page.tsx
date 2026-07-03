@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Mail, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Mail, Plus, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/console/page-header";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Field, FieldError, FieldHint } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -22,21 +23,39 @@ import {
   invitationsApi,
   type Invitation,
   type InvitationStatus,
+  type MembershipRoleName,
 } from "@/lib/api/endpoints/invitations";
 import { ApiError } from "@/lib/api/problem";
 import { useCurrentOrgId } from "@/stores/session-store";
 import { dateTime, relativeTime } from "@/lib/format";
 
+/**
+ * Invitations page.
+ *
+ * Backend contract notes (see `OrganizationInvitationController`):
+ *   * List path is /api/v1/organizations/invitations/organization/{orgId}
+ *     (NOT /api/v1/organizations/{orgId}/invitations — that path 404s and was
+ *     the cause of the `Static resource not found` log spam).
+ *   * The invite payload takes a `MembershipRole` enum, not a role UUID.
+ *     Values: OWNER | ADMIN | MEMBER | GUEST.
+ *   * Server infers expiration from application config; no `expiresInHours`
+ *     field is accepted today.
+ *   * There is no /resend endpoint yet — Revoke and re-invite is the flow.
+ */
+
 const invitationSchema = z.object({
   email: z.string().trim().email("Enter a valid email"),
-  expiresInHours: z.coerce.number().int().min(1).max(720).default(72),
+  role: z.enum(["OWNER", "ADMIN", "MEMBER", "GUEST"]).default("MEMBER"),
 });
 type InviteValues = {
   email: string;
-  expiresInHours: number;
+  role: MembershipRoleName;
 };
 
-const statusTone: Record<InvitationStatus, Parameters<typeof Badge>[0]["tone"]> = {
+const statusTone: Record<
+  InvitationStatus,
+  Parameters<typeof Badge>[0]["tone"]
+> = {
   PENDING: "amber",
   ACCEPTED: "emerald",
   EXPIRED: "neutral",
@@ -60,12 +79,19 @@ export default function InvitationsPage() {
     reset,
     formState: { errors },
   } = useForm<InviteValues>({
-    resolver: zodResolver(invitationSchema) as unknown as import("react-hook-form").Resolver<InviteValues>,
-    defaultValues: { email: "", expiresInHours: 72 },
+    resolver: zodResolver(
+      invitationSchema,
+    ) as unknown as import("react-hook-form").Resolver<InviteValues>,
+    defaultValues: { email: "", role: "MEMBER" },
   });
 
   const createMutation = useMutation({
-    mutationFn: (v: InviteValues) => invitationsApi.create(orgId!, v),
+    mutationFn: (v: InviteValues) =>
+      invitationsApi.create({
+        organizationId: orgId!,
+        email: v.email,
+        role: v.role,
+      }),
     onSuccess: () => {
       toast.success("Invitation sent");
       qc.invalidateQueries({ queryKey: ["invitations", orgId] });
@@ -82,19 +108,9 @@ export default function InvitationsPage() {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (id: string) => invitationsApi.revoke(orgId!, id),
+    mutationFn: (id: string) => invitationsApi.revoke(id),
     onSuccess: () => {
       toast.success("Invitation revoked");
-      qc.invalidateQueries({ queryKey: ["invitations", orgId] });
-    },
-    onError: (err: ApiError) =>
-      toast.error(err.problem.detail ?? err.problem.title),
-  });
-
-  const resendMutation = useMutation({
-    mutationFn: (id: string) => invitationsApi.resend(orgId!, id),
-    onSuccess: () => {
-      toast.success("Invitation email resent");
       qc.invalidateQueries({ queryKey: ["invitations", orgId] });
     },
     onError: (err: ApiError) =>
@@ -116,7 +132,11 @@ export default function InvitationsPage() {
       header: "Status",
       render: (r) => <Badge tone={statusTone[r.status]}>{r.status}</Badge>,
     },
-    { key: "role", header: "Role", render: (r) => r.roleName ?? "—" },
+    {
+      key: "role",
+      header: "Role",
+      render: (r) => r.role ?? "—",
+    },
     {
       key: "expires",
       header: "Expires",
@@ -149,22 +169,16 @@ export default function InvitationsPage() {
       render: (r) => (
         <div className="flex items-center justify-end gap-2">
           {r.status === "PENDING" && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => resendMutation.mutate(r.id)}
-              >
-                <RefreshCw className="mr-1 h-3.5 w-3.5" /> Resend
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => revokeMutation.mutate(r.id)}
-              >
-                <Trash2 className="mr-1 h-3.5 w-3.5" /> Revoke
-              </Button>
-            </>
+            <Button
+              variant="outline"
+              size="sm"
+              loading={
+                revokeMutation.isPending && revokeMutation.variables === r.id
+              }
+              onClick={() => revokeMutation.mutate(r.id)}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Revoke
+            </Button>
           )}
         </div>
       ),
@@ -254,18 +268,18 @@ export default function InvitationsPage() {
             <FieldError message={errors.email?.message} />
           </Field>
           <Field>
-            <Label htmlFor="expiresInHours">Expires in (hours)</Label>
-            <Input
-              id="expiresInHours"
-              type="number"
-              min={1}
-              max={720}
-              {...register("expiresInHours")}
-            />
+            <Label htmlFor="role">Role</Label>
+            <Select id="role" {...register("role")}>
+              <option value="MEMBER">Member — baseline read access</option>
+              <option value="ADMIN">Administrator — manage the org</option>
+              <option value="OWNER">Owner — full control</option>
+              <option value="GUEST">Guest — restricted access</option>
+            </Select>
             <FieldHint>
-              Between 1 hour and 30 days. Defaults to 72 hours.
+              Determines the initial permissions when the invitation is
+              accepted.
             </FieldHint>
-            <FieldError message={errors.expiresInHours?.message} />
+            <FieldError message={errors.role?.message} />
           </Field>
         </form>
       </Dialog>

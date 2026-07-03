@@ -89,6 +89,13 @@ const createClient = (): AxiosInstance => {
         | undefined;
 
       // Attempt single silent refresh on 401 for authenticated requests only.
+      //
+      // We deliberately DO NOT clear the token store if the refresh itself
+      // fails. The backend's /api/v1/auth/refresh expects the refresh token
+      // in the JSON body (not a cookie), and the SPA currently has no way
+      // to supply it — so a refresh 4xx is expected and must not nuke the
+      // just-issued access token. The caller will surface a real 401 and
+      // the auth guard will handle sign-out explicitly.
       if (
         error.response?.status === 401 &&
         original &&
@@ -100,7 +107,7 @@ const createClient = (): AxiosInstance => {
           await ensureRefresh();
           return instance.request(original);
         } catch {
-          tokenStore.clear();
+          // swallow — see comment above
         }
       }
 
