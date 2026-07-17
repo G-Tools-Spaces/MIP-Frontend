@@ -50,9 +50,13 @@ export type CreateInvitationRequest = {
   invitedByUserId?: string;
 };
 
+/**
+ * Wire shape for POST /api/v1/organizations/invitations/accept. The
+ * backend DTO field is {@code invitationToken}; keep that exact spelling
+ * here so serialisation matches without a runtime remap.
+ */
 export type AcceptInvitationRequest = {
-  /** Invitation token issued in the invite email. */
-  token: string;
+  invitationToken: string;
   userId: string;
 };
 

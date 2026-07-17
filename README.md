@@ -1,125 +1,237 @@
-# MeiCrypt Identity — Frontend
+# MeiCrypt Identity Provider — Frontend
 
-Next.js 14 frontend for the **MeiCrypt Identity Platform (MIP)**. Ships four
-distinct portals inside a single App Router codebase using route groups.
+Next.js frontend for the **MeiCrypt Identity Platform (MIP)**. Ships four distinct portals inside a single App Router codebase using route groups.
 
-## 🧱 Stack
+---
 
-- **Framework:** Next.js 16 (App Router, RSC)
-- **Language:** TypeScript (strict)
-- **Styling:** Tailwind CSS v4 + custom shadcn-style UI primitives
-- **Server state:** TanStack Query 5
-- **Client state:** Zustand
-- **Forms:** React Hook Form + Zod
-- **HTTP:** Axios (with silent token refresh + RFC 7807 error translation)
-- **Auth:** OAuth2 Authorization Code + PKCE (RFC 7636)
-- **Icons:** Lucide
-- **Toasts:** Sonner
-- **Theming:** next-themes (light / dark / system)
+## Table of Contents
 
-## 📁 Layout
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Project Structure](#project-structure)
+- [Environment Variables](#environment-variables)
+- [Setup & Running](#setup--running)
+- [Things That Are Not Visible on Screen](#things-that-are-not-visible-on-screen)
+- [Portal Routes](#portal-routes)
+
+---
+
+## Tech Stack
+
+| Layer          | Technology                                      |
+|----------------|-------------------------------------------------|
+| Framework      | Next.js 16 (App Router, RSC)                    |
+| Language       | TypeScript (strict mode)                        |
+| Styling        | Tailwind CSS v4 + custom shadcn-style UI        |
+| Server State   | TanStack Query 5                                |
+| Client State   | Zustand                                         |
+| Forms          | React Hook Form + Zod                           |
+| HTTP Client    | Axios (silent token refresh + RFC 7807 errors)  |
+| Auth           | OAuth2 Authorization Code + PKCE (RFC 7636)     |
+| Icons          | Lucide                                          |
+| Toasts         | Sonner                                          |
+| Theming        | next-themes (light / dark / system)             |
+| Package Manager| pnpm                                            |
+
+---
+
+## Prerequisites
+
+Make sure the following are installed before you start:
+
+- **Node.js 20+** — `node -v`
+- **pnpm** — `npm install -g pnpm` (or `corepack enable && corepack prepare pnpm@latest --activate`)
+- The **backend** (`MeiCrypt-Identity-Provider`) must be running on `http://localhost:8080` before you start the frontend.
+
+---
+
+## Project Structure
 
 ```
 src/
 ├── app/
-│   ├── (auth)/                  # Public — login, register, MFA, verify-email
-│   │   ├── layout.tsx           # Split-screen brand + form layout
-│   │   ├── login/
-│   │   ├── register/
-│   │   ├── forgot-password/
-│   │   ├── mfa-challenge/
-│   │   └── verify-email/
-│   ├── (console)/               # Org admin console (placeholder, expands in F2)
-│   │   └── console/
-│   ├── layout.tsx               # Root layout — providers, fonts, theme
-│   ├── page.tsx                 # Root → redirects to /login
-│   └── globals.css              # Tailwind + design tokens
+│   ├── (auth)/          # Public — login, register, MFA, verify-email, onboarding
+│   ├── (console)/       # Org admin console
+│   ├── (platform)/      # Global admin platform management
+│   ├── (oauth)/         # OAuth2 authorize & OIDC discovery
+│   ├── (account)/       # Logged-in user profile & security settings
+│   └── layout.tsx       # Root layout — providers, fonts, theme
 ├── components/
-│   ├── brand/                   # Logo, wordmark
-│   ├── providers/               # QueryProvider, ThemeProvider, AppProviders
-│   └── ui/                      # Button, Input, Label, Field, Alert, Card
+│   ├── ui/              # Reusable UI primitives (Button, Card, Input, etc.)
+│   ├── console/         # Console-specific components (sidebar, topbar, etc.)
+│   └── providers/       # React context providers
 ├── lib/
-│   ├── api/
-│   │   ├── client.ts            # Axios instance + interceptors
-│   │   ├── problem.ts           # RFC 7807 ProblemDetails + ApiError
-│   │   └── endpoints/auth.ts    # /api/v1/auth/* client
-│   ├── auth/
-│   │   ├── token-store.ts       # In-memory + sessionStorage token store
-│   │   └── pkce.ts              # PKCE code verifier/challenge helpers
-│   └── utils.ts                 # cn() Tailwind helper
-├── stores/
-│   └── session-store.ts         # Zustand — user, org, MFA state
-├── env.ts                       # Runtime env accessor
-└── middleware.ts                # Request-ID header (future tenant resolution)
+│   ├── api/             # Axios client + typed endpoint functions
+│   └── auth/            # PKCE helpers, token store, auth hooks
+└── stores/              # Zustand global stores
 ```
 
-## 🚀 Quick start
+---
+
+## Environment Variables
+
+Create a `.env.local` file in the `MeiCrypt-Identity-Provider---Frontend/` directory. A working `.env.local` file is already present — update values as needed.
+
+> ⚠️ Never commit `.env.local` to version control. It is already in `.gitignore`.
+
+### All Environment Variables
+
+#### Backend API (Required)
+
+| Variable                  | Description                                                         | Default / Example               | Where to Get It                              |
+|---------------------------|---------------------------------------------------------------------|---------------------------------|----------------------------------------------|
+| `NEXT_PUBLIC_API_BASE_URL`| Base URL of the Spring Boot backend API                             | `http://localhost:8080`         | Your running backend URL                     |
+| `NEXT_PUBLIC_ISSUER_URL`  | OAuth2/OIDC issuer URL — must match `MEICRYPT_ISSUER` in backend   | `http://localhost:8080`         | Same as backend `MEICRYPT_ISSUER`            |
+
+#### Supabase (Required if using Supabase backend)
+
+| Variable                        | Description                                                         | Where to Get It                                                            |
+|---------------------------------|---------------------------------------------------------------------|----------------------------------------------------------------------------|
+| `NEXT_PUBLIC_SUPABASE_URL`      | Your Supabase project URL                                           | Supabase Dashboard → Project Settings → API → Project URL                 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public/anon key — safe to expose in browser               | Supabase Dashboard → Project Settings → API → `anon` `public` key         |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Supabase service role key — **server-side only, never expose to browser** | Supabase Dashboard → Project Settings → API → `service_role` key    |
+| `SUPABASE_DB_URL`               | Direct PostgreSQL connection string (for migrations)               | Supabase Dashboard → Project Settings → Database → Connection String        |
+
+#### Application
+
+| Variable              | Description                                      | Default               |
+|-----------------------|--------------------------------------------------|-----------------------|
+| `NEXT_PUBLIC_APP_NAME`| Application display name shown in the UI        | `MeiCrypt Identity`   |
+| `NODE_ENV`            | Node environment (`development` / `production`)  | `development`         |
+
+#### Optional
+
+| Variable     | Description                                            | Example                                              |
+|--------------|--------------------------------------------------------|------------------------------------------------------|
+| `REDIS_URL`  | Redis connection URL (if using with Supabase/external) | `redis://default:password@your-redis-host:6379`      |
+
+---
+
+### Minimal `.env.local` for local development
+
+If you're running the backend locally with **Option A** (local Docker), you only need these:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+NEXT_PUBLIC_ISSUER_URL=http://localhost:8080
+NEXT_PUBLIC_APP_NAME=MeiCrypt Identity
+NODE_ENV=development
+
+# Supabase — fill in from your Supabase project dashboard
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+SUPABASE_DB_URL=postgresql://postgres.YOUR_PROJECT_ID:YOUR_PASSWORD@aws-0-region.pooler.supabase.com:5432/postgres
+```
+
+---
+
+## Setup & Running
+
+### 1. Install dependencies
 
 ```bash
-# From /home/siva-25197/Downloads/meicrypt
-cp frontend/.env.local.example frontend/.env.local
-cd frontend
+cd MeiCrypt-Identity-Provider---Frontend
 pnpm install
+```
+
+### 2. Set up environment variables
+
+```bash
+# The .env.local file already exists — review and update values as needed
+# At minimum, ensure NEXT_PUBLIC_API_BASE_URL and NEXT_PUBLIC_ISSUER_URL are correct
+```
+
+### 3. Make sure the backend is running
+
+The frontend depends on the backend API being available. Start the backend first:
+
+```bash
+# In MeiCrypt-Identity-Provider/
+docker-compose up -d       # Start PostgreSQL + Redis
+./mvnw spring-boot:run     # Start Spring Boot on port 8080
+```
+
+### 4. Start the frontend
+
+```bash
 pnpm dev
 ```
 
-Open <http://localhost:3000> — you'll land on `/login`.
+The app will be available at **http://localhost:3000**.
 
-Make sure the Spring backend is running at `NEXT_PUBLIC_API_BASE_URL`
-(default `http://localhost:8080`):
-
-```bash
-# From project root, in another terminal
-docker-compose up -d postgres redis
-mvn spring-boot:run
-```
-
-## 🔐 Auth flow
-
-1. `LoginForm` posts to `POST /api/v1/auth/login` (JSON: `{ orgSlug, email, password }`).
-2. Backend returns `{ accessToken, expiresIn, user, orgSlug }` and sets an
-   **HttpOnly refresh cookie**.
-3. `useSession.setSession` hydrates `tokenStore` + Zustand and routes to `/console`.
-4. Any authenticated request that returns **401** triggers a single silent
-   `POST /api/v1/auth/refresh`; on failure the store is cleared and the user
-   is bounced back to `/login`.
-5. If the backend responds with `mfaRequired: true`, the UI routes to
-   `/mfa-challenge` and posts the TOTP code to
-   `POST /api/v1/auth/mfa/verify`.
-
-## 🎨 Design system
-
-The UI adopts a clean **slate + indigo** palette inspired by Auth0/Clerk. All
-primitives live under `src/components/ui/` and are:
-
-- fully typed with `class-variance-authority`
-- keyboard-accessible
-- dark-mode aware via the `.dark` class on `<html>`
-
-Swap the palette in `globals.css` (`--ring`, gradient stops) and Tailwind
-utility classes — no lock-in to a third-party UI kit.
-
-## 🧭 Roadmap
-
-- **F0 ✅** Bootstrap + API client + design system + auth providers
-- **F1 ✅** Login, register, forgot-password, verify-email, MFA challenge
-- **F2** Console shell — sidebar, org switcher, tenant theming
-- **F3** Organization management (settings, memberships, invitations, domains)
-- **F4** User management (list, detail, lifecycle)
-- **F5** RBAC UI (roles, permissions, assignments)
-- **F6** Developer Portal (OAuth client apps, secret rotation, redirect URIs)
-- **F7** OAuth consent screens + OIDC discovery integration
-- **F8** MFA & Passkey enrollment (TOTP QR, WebAuthn)
-- **F9** SSO portal + Single Logout
-- **F10** Audit log viewer + notification template editor
-- **F11** Platform Admin console (global orgs, stats)
-- **F12** Polish — i18n, a11y, E2E tests (Playwright)
-
-## 🧪 Scripts
+### Build for production
 
 ```bash
-pnpm dev      # Next dev server (http://localhost:3000)
-pnpm build    # Production build
-pnpm start    # Serve production build
-pnpm lint     # ESLint (next/core-web-vitals)
+pnpm build
+pnpm start
 ```
+
+### Lint
+
+```bash
+pnpm lint
+```
+
+---
+
+## Things That Are Not Visible on Screen
+
+These are behaviours that are not shown in the UI but are important to know during development.
+
+### OTP (One-Time Password) During Registration
+
+When you register a new account and reach the email verification step, **the OTP code is NOT shown in the browser**. The input box will appear blank and waiting.
+
+You must look at the **backend terminal logs** to find the OTP code. Look for a line like:
+
+```
+[OTP] Plaintext OTP for user@example.com: 847392
+```
+
+Copy this code and paste it into the OTP input field in the browser to complete registration.
+
+> This log only appears when `meicrypt.onboarding.otp.log-plaintext=true` is set in the backend (enabled by default in the `local` and `supabase` dev profiles).
+
+### Token Refresh (Silent)
+
+The Axios HTTP client silently refreshes access tokens in the background using the refresh token. There is **no loading indicator or visible feedback** during this. If you see a brief pause in API calls, the token is likely being refreshed. Check browser DevTools → Network tab to inspect token refresh requests to `/api/v1/auth/refresh`.
+
+### PKCE Auth Flow
+
+The login flow uses **OAuth2 Authorization Code + PKCE**. The `code_verifier` and `code_challenge` are generated client-side and stored in `sessionStorage` temporarily during the OAuth redirect. You won't see this in the UI — check browser DevTools → Application → Session Storage if you need to inspect it.
+
+### Org Switcher Persistence
+
+The currently selected organisation is persisted in the Zustand session store (in-memory). If you refresh the page, the active org may reset. This is expected behaviour in the current version.
+
+### Console Sections Marked "Coming Soon"
+
+Several console sections (e.g., some settings sub-pages) render a "Coming Soon" placeholder. There is no error — these are intentional stubs for future features. The sidebar may link to them but clicking shows only a placeholder screen.
+
+---
+
+## Portal Routes
+
+| Route                     | Portal                | Description                                         |
+|---------------------------|-----------------------|-----------------------------------------------------|
+| `/login`                  | Auth                  | Sign in page                                        |
+| `/register`               | Auth                  | Create new account                                  |
+| `/verify-email`           | Auth                  | Email OTP verification (enter OTP from backend logs)|
+| `/forgot-password`        | Auth                  | Password reset flow                                 |
+| `/mfa-challenge`          | Auth                  | TOTP / WebAuthn MFA challenge                       |
+| `/onboarding/choose`      | Auth                  | Post-registration: create or join an org            |
+| `/onboarding/setup`       | Auth                  | New org setup wizard                                |
+| `/onboarding/join`        | Auth                  | Join org via invitation                             |
+| `/console`                | Org Admin Console     | Org admin dashboard                                 |
+| `/console/users`          | Org Admin Console     | Manage org users                                    |
+| `/console/roles`          | Org Admin Console     | Manage roles & permissions                          |
+| `/console/applications`   | Org Admin Console     | Manage OAuth2 client applications                   |
+| `/console/invitations`    | Org Admin Console     | Send & manage user invitations                      |
+| `/console/audit`          | Org Admin Console     | Audit log viewer                                    |
+| `/console/domains`        | Org Admin Console     | Domain configuration                                |
+| `/console/oauth-clients`  | Org Admin Console     | OAuth2 clients registry                             |
+| `/admin`                  | Global Platform Admin | Platform-wide admin dashboard                       |
+| `/admin/org-creation-requests` | Global Platform Admin | Approve/reject org creation requests          |
+| `/profile`                | Account               | User profile management                             |
+| `/authorize`              | OAuth                 | OAuth2 authorization consent screen                 |

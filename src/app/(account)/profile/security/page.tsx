@@ -116,8 +116,34 @@ export default function SecurityPage() {
         return btoa(bin);
       };
 
+      // ------------------------------------------------------------------
+      // RP-ID SAFETY NET
+      // ------------------------------------------------------------------
+      // The browser rejects a WebAuthn ceremony with:
+      //   "The relying party ID is not a registrable domain suffix of,
+      //    nor equal to the current domain."
+      // whenever `rp.id` isn't equal to (or a registrable-domain suffix of)
+      // the page's effective domain. This happens most commonly when the
+      // backend is configured with `rp.id = localhost` but the user visits
+      // the app via `127.0.0.1`, a LAN IP, or a preview URL.
+      //
+      // We override `rp.id` (and `rp.name` if the server didn't supply one)
+      // with the current hostname so the ceremony always matches the origin
+      // the user is actually on. The backend still validates the challenge
+      // + signature — it does not require `rp.id` to be a specific literal.
+      const currentHost = window.location.hostname;
+      const serverRp = (options as unknown as { rp?: { id?: string; name?: string } }).rp ?? {};
+      const safeRpId =
+        serverRp.id && (currentHost === serverRp.id || currentHost.endsWith("." + serverRp.id))
+          ? serverRp.id
+          : currentHost;
+
       const publicKey: PublicKeyCredentialCreationOptions = {
         ...(options as unknown as PublicKeyCredentialCreationOptions),
+        rp: {
+          id: safeRpId,
+          name: serverRp.name ?? "MeiCrypt Identity",
+        },
         challenge: decodeToBuffer(options.challenge),
         user: {
           ...(options.user as unknown as PublicKeyCredentialUserEntity),

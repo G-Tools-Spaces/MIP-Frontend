@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Field, FieldError } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { authApi } from "@/lib/api/endpoints/auth";
+import { onboardingApi } from "@/lib/api/endpoints/onboarding";
 import { ApiError } from "@/lib/api/problem";
 import { useSession } from "@/stores/session-store";
 
@@ -68,7 +69,7 @@ export const MfaChallengeForm = () => {
         orgSlug: orgSlug ?? undefined,
         organizationId: mfaOrgId ?? undefined,
       }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (!data.user) {
         setFormError("Verification succeeded but no profile was returned.");
         return;
@@ -83,7 +84,40 @@ export const MfaChallengeForm = () => {
         organizationId: data.organizationId,
       });
       toast.success("Signed in");
-      router.push("/console");
+
+      // V18: mirror the login form's post-auth routing — if we don't have
+      // an org bound to the session, probe /onboarding/me/memberships and
+      // send the user to the console or onboarding based on the result.
+      if (data.organizationId) {
+        router.push("/console");
+        return;
+      }
+      try {
+        const memberships = await onboardingApi.myMemberships();
+        const activeMembership = memberships.find(
+          (m) => m.status === "ACTIVE",
+        );
+        if (activeMembership) {
+          // Bind the SPA session to the user's primary active org so that
+          // org-scoped pages (invitations, users, roles, …) don't fall back
+          // to the "No organization context" warning after MFA sign-in.
+          setSession({
+            accessToken: data.accessToken,
+            expiresIn: data.expiresIn,
+            user: {
+              ...data.user,
+              membershipId: activeMembership.membershipId,
+            },
+            orgSlug: activeMembership.organizationSlug ?? undefined,
+            organizationId: activeMembership.organizationId,
+          });
+          router.push("/console");
+        } else {
+          router.push("/onboarding/choose");
+        }
+      } catch {
+        router.push("/onboarding/choose");
+      }
     },
     onError: (error: ApiError) => {
       if (error.status === 401 || error.status === 400) {

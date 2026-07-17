@@ -11,6 +11,7 @@ import {
   UserCircle,
   Server,
   Radio,
+  Inbox,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +25,13 @@ export type NavItem = {
 export type NavGroup = {
   label: string;
   items: NavItem[];
+  /**
+   * When true, this group should only be rendered to users with the
+   * {@code ROLE_PLATFORM_ADMIN} authority (Global Admin). The sidebar
+   * component is responsible for enforcing this — see
+   * {@link @/lib/auth/use-is-global-admin useIsGlobalAdmin}.
+   */
+  platformAdminOnly?: boolean;
 };
 
 export const consoleNav: NavGroup[] = [
@@ -70,8 +78,17 @@ export const consoleNav: NavGroup[] = [
   },
   {
     label: "Platform admin",
+    platformAdminOnly: true,
     items: [
       { label: "Global admin", href: "/admin", icon: Server },
+      {
+        // Global-admin approval queue for "Create business" (org creation)
+        // submissions. Rejecting is done inline on the same page. This is
+        // the ONLY UI entry-point for approving new tenants.
+        label: "Org creation queue",
+        href: "/admin/org-creation-requests",
+        icon: Inbox,
+      },
     ],
   },
 ];

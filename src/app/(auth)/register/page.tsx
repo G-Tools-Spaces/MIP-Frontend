@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Suspense } from "react";
 import { RegisterForm } from "./register-form";
+import { SignInLink } from "./sign-in-link";
 
 export const metadata: Metadata = {
   title: "Create your account",
@@ -18,17 +19,13 @@ export default function RegisterPage() {
         </p>
       </div>
 
-      <RegisterForm />
+      <Suspense fallback={<div className="h-96" />}>
+        <RegisterForm />
+      </Suspense>
 
-      <p className="text-sm text-center text-slate-500 dark:text-slate-400">
-        Already have an account?{" "}
-        <Link
-          href="/login"
-          className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-        >
-          Sign in
-        </Link>
-      </p>
+      <Suspense fallback={null}>
+        <SignInLink />
+      </Suspense>
     </div>
   );
 }

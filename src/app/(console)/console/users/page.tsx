@@ -23,7 +23,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Dropdown, DropdownItem } from "@/components/ui/dropdown";
 import {
   usersApi,
-  type User,
+  type OrgMember,
   type UserStatus,
 } from "@/lib/api/endpoints/users";
 import { ApiError } from "@/lib/api/problem";
@@ -83,7 +83,17 @@ export default function UsersPage() {
     onSettled,
   });
 
-  const columns: Column<User>[] = [
+  const roleTone: Record<
+    OrgMember["role"],
+    Parameters<typeof Badge>[0]["tone"]
+  > = {
+    OWNER: "violet",
+    ADMIN: "indigo",
+    MEMBER: "neutral",
+    GUEST: "amber",
+  };
+
+  const columns: Column<OrgMember>[] = [
     {
       key: "user",
       header: "User",
@@ -103,11 +113,19 @@ export default function UsersPage() {
       ),
     },
     {
+      key: "role",
+      header: "Role",
+      render: (u) => <Badge tone={roleTone[u.role]}>{u.role}</Badge>,
+    },
+    {
       key: "status",
       header: "Status",
       render: (u) => (
         <div className="flex items-center gap-2">
           <Badge tone={statusTone[u.status]}>{u.status}</Badge>
+          {u.membershipStatus !== "ACTIVE" && (
+            <Badge tone="neutral">{u.membershipStatus.toLowerCase()}</Badge>
+          )}
           {!u.emailVerified && (
             <Badge tone="amber">unverified</Badge>
           )}

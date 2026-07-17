@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useSession } from "@/stores/session-store";
 import { tokenStore } from "@/lib/auth/token-store";
+import { onboardingApi } from "@/lib/api/endpoints/onboarding";
 
 /**
  * Client-side auth guard for the (console) route group.
@@ -39,6 +40,9 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
   const pathname = usePathname();
   const status = useSession((s) => s.status);
   const hydrated = useSession((s) => s.hydrated);
+  const organizationId = useSession((s) => s.organizationId);
+  const user = useSession((s) => s.user);
+  const setSession = useSession((s) => s.setSession);
 
   const [mounted, setMounted] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -67,6 +71,44 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
     const returnTo = encodeURIComponent(pathname ?? "/console");
     router.replace(`/login?returnTo=${returnTo}`);
   }, [mounted, hydrated, authenticated, pathname, router]);
+
+  // Self-heal: if the caller is authenticated but the session store has no
+  // active organization bound (e.g. an older sign-in that predated the
+  // login-form fix, or a hard refresh mid-onboarding), fetch their
+  // memberships and bind the first ACTIVE one. This prevents org-scoped
+  // pages from falling back to the "No organization context" warning.
+  useEffect(() => {
+    if (!mounted || !hydrated || !authenticated) return;
+    if (organizationId) return;
+    if (!user) return;
+    const snap = tokenStore.get();
+    if (!snap) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const memberships = await onboardingApi.myMemberships();
+        if (cancelled) return;
+        const active = memberships.find((m) => m.status === "ACTIVE");
+        if (!active) return;
+        const expiresIn = Math.max(
+          1,
+          Math.floor((snap.expiresAt - Date.now()) / 1000),
+        );
+        setSession({
+          accessToken: snap.accessToken,
+          expiresIn,
+          user: { ...user, membershipId: active.membershipId },
+          orgSlug: active.organizationSlug ?? undefined,
+          organizationId: active.organizationId,
+        });
+      } catch {
+        // Swallow — the "No organization context" warning is a safe fallback.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, hydrated, authenticated, organizationId, user, setSession]);
 
   // Server render + first client render (pre-hydration) — always spinner
   // so the server-rendered HTML matches what React sees on the client.

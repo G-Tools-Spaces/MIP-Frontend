@@ -13,14 +13,20 @@ import { env } from "@/env";
  */
 
 /**
- * Frontend-facing login shape. The SPA passes an org slug for UX; the
- * client transparently resolves it to the backend's required UUID.
+ * Frontend-facing login shape.
+ *
+ * Since V18 (decouple users from organization) a user is a global identity
+ * and may belong to zero, one, or many organizations. The login form no
+ * longer collects an org slug — the backend resolves the caller's active
+ * membership after credential verification. Callers MAY still pass an
+ * {@code orgSlug} for legacy tenant-scoped sign-ins; the client will
+ * resolve it to a UUID before hitting the backend.
  */
 export type LoginRequest = {
   email: string;
   password: string;
-  /** Required organization slug for multi-tenant login. */
-  orgSlug: string;
+  /** Optional organization slug for legacy tenant-scoped login. */
+  orgSlug?: string;
   /** Set by the browser at request time. */
   deviceFingerprint?: string;
   deviceName?: string;
@@ -128,15 +134,22 @@ export type MfaVerifyRequest = {
 
 export const authApi = {
   /**
-   * Two-step login: resolve org slug → UUID, then POST /auth/login.
+   * Login by email + password. If the caller supplies an optional
+   * {@code orgSlug} (legacy tenant-scoped flow) we resolve it to a UUID
+   * first, otherwise we hit the backend without an organizationId and let
+   * it resolve the session's org from the user's active memberships.
+   *
    * Also flattens the backend's {tokens, mfaChallenge} envelope into the
    * top-level shape the SPA components expect.
    */
   login: async (payload: LoginRequest): Promise<LoginResponse> => {
-    const orgResponse = await api.get<{ id: string }>(
-      `/api/v1/organizations/slug/${encodeURIComponent(payload.orgSlug)}`,
-    );
-    const organizationId = orgResponse.data.id;
+    let organizationId: string | undefined;
+    if (payload.orgSlug) {
+      const orgResponse = await api.get<{ id: string }>(
+        `/api/v1/organizations/slug/${encodeURIComponent(payload.orgSlug)}`,
+      );
+      organizationId = orgResponse.data.id;
+    }
 
     const raw = await api
       .post<BackendLoginResponse>("/api/v1/auth/login", {

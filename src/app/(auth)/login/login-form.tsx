@@ -16,15 +16,21 @@ import { Label } from "@/components/ui/label";
 import { Field, FieldError } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { authApi, type LoginResponse } from "@/lib/api/endpoints/auth";
+import { onboardingApi } from "@/lib/api/endpoints/onboarding";
 import { ApiError } from "@/lib/api/problem";
 import { useSession } from "@/stores/session-store";
 
+/**
+ * Login form.
+ *
+ * Since V18 the user is a global identity and may belong to zero, one, or
+ * many organizations. We therefore no longer prompt for an org slug — the
+ * backend resolves the caller's active membership from their credentials.
+ * After a successful login we probe `/onboarding/me/memberships`:
+ *   • ≥1 ACTIVE membership → route to /console (dashboard)
+ *   • zero memberships     → route to /onboarding/choose (join or create)
+ */
 const loginSchema = z.object({
-  orgSlug: z
-    .string()
-    .trim()
-    .min(1, "Organization is required")
-    .max(64, "Organization slug is too long"),
   email: z.string().trim().email("Enter a valid email address"),
   password: z.string().min(1, "Password is required"),
 });
@@ -46,15 +52,14 @@ export const LoginForm = () => {
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      orgSlug: searchParams.get("org") ?? "",
-      email: "",
+      email: searchParams.get("email") ?? "",
       password: "",
     },
   });
 
   const loginMutation = useMutation({
     mutationFn: (values: LoginValues) => authApi.login(values),
-    onSuccess: (data: LoginResponse) => {
+    onSuccess: async (data: LoginResponse) => {
       if (data.mfaRequired && data.mfaChallengeId) {
         setMfaChallenge(
           data.mfaChallengeId,
@@ -79,16 +84,60 @@ export const LoginForm = () => {
         organizationId: data.organizationId,
       });
       toast.success(`Welcome back, ${data.user.displayName}`);
+
+      // Decide the post-login destination.
+      //   • ?returnTo=/some/path → honour it (deep-link support).
+      //   • The token already carries an org_id → user has an active
+      //     membership, send them to the console.
+      //   • Otherwise probe /onboarding/me/memberships and route based on
+      //     whether they have any ACTIVE memberships.
       const returnTo = searchParams.get("returnTo");
-      router.push(returnTo && returnTo.startsWith("/") ? returnTo : "/console");
+      if (returnTo && returnTo.startsWith("/")) {
+        router.push(returnTo);
+        return;
+      }
+
+      if (data.organizationId) {
+        router.push("/console");
+        return;
+      }
+
+      try {
+        const memberships = await onboardingApi.myMemberships();
+        const activeMembership = memberships.find(
+          (m) => m.status === "ACTIVE",
+        );
+        if (activeMembership) {
+          // Bind the SPA session to the user's primary active org so that
+          // org-scoped pages (invitations, users, roles, …) don't fall back
+          // to the "No organization context" warning. Without this, the
+          // token store keeps `organizationId = null` and every downstream
+          // `useCurrentOrgId()` returns null.
+          setSession({
+            accessToken: data.accessToken,
+            expiresIn: data.expiresIn,
+            user: {
+              ...data.user,
+              membershipId: activeMembership.membershipId,
+            },
+            orgSlug: activeMembership.organizationSlug ?? undefined,
+            organizationId: activeMembership.organizationId,
+          });
+          router.push("/console");
+        } else {
+          router.push("/onboarding/choose");
+        }
+      } catch {
+        // If the probe fails we fall back to the onboarding chooser — safer
+        // than dumping the user into an empty dashboard.
+        router.push("/onboarding/choose");
+      }
     },
     onError: (error: ApiError) => {
       if (error.status === 401) {
         setFormError("Invalid email or password.");
       } else if (error.status === 403) {
-        setFormError(
-          "Your account is not permitted to sign in to this organization.",
-        );
+        setFormError("Your account is not permitted to sign in.");
       } else if (error.status === 429) {
         setFormError("Too many attempts. Please try again in a moment.");
       } else if (error.status === 0) {
@@ -113,18 +162,6 @@ export const LoginForm = () => {
           {formError}
         </Alert>
       )}
-
-      <Field>
-        <Label htmlFor="orgSlug">Organization</Label>
-        <Input
-          id="orgSlug"
-          placeholder="acme"
-          autoComplete="organization"
-          invalid={!!errors.orgSlug}
-          {...register("orgSlug")}
-        />
-        <FieldError message={errors.orgSlug?.message} />
-      </Field>
 
       <Field>
         <Label htmlFor="email">Email address</Label>

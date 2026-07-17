@@ -5,12 +5,20 @@ import { usePathname } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
 import { consoleNav } from "./nav-config";
 import { cn } from "@/lib/utils";
+import { useIsGlobalAdmin } from "@/lib/auth/use-is-global-admin";
 
 const isActive = (pathname: string, href: string) =>
   href === "/console" ? pathname === "/console" : pathname.startsWith(href);
 
 export const ConsoleSidebar = () => {
   const pathname = usePathname();
+  const { isGlobalAdmin } = useIsGlobalAdmin();
+
+  // Hide platform-admin-only groups (e.g. Global admin dashboard, Org
+  // creation approval queue) for anyone who isn't a Global Admin.
+  const visibleGroups = consoleNav.filter(
+    (group) => !group.platformAdminOnly || isGlobalAdmin,
+  );
 
   return (
     <aside className="hidden lg:flex h-screen w-64 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
@@ -21,7 +29,7 @@ export const ConsoleSidebar = () => {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-5 space-y-6">
-        {consoleNav.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.label} className="space-y-1">
             <p className="px-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
               {group.label}
