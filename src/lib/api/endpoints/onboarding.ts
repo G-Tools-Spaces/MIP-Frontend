@@ -22,19 +22,19 @@ export type IdentityLookupResponse = {
   nextStep: "REGISTER" | "LOGIN";
 };
 
-// ─── Step 1 — Phone-OTP registration (start) ──────────────────────────────
+// ─── Step 1 — Email-OTP registration (start) ──────────────────────────────
 
 export type StartRegistrationRequest = {
   firstName: string;
   lastName: string;
   email: string;
-  phoneE164: string;
   password: string;
 };
 
 export type StartRegistrationResponse = {
   verificationId: string;
-  phoneE164: string;
+  /** Partially redacted email address echoed back for display (e.g. "j***n@company.com"). */
+  email: string;
   expiresAt: string;
   maxAttempts: number;
 };
@@ -49,8 +49,9 @@ export type VerifyRegistrationOtpRequest = {
 export type VerifyRegistrationOtpResponse = {
   userId: string;
   email: string;
-  phoneE164: string;
-  nextAction: "CHOOSE_ONBOARDING_PATH";
+  /** Short-lived JWT (10 min) for MFA factor enrolment only. */
+  setupToken: string;
+  nextAction: "SETUP_MFA" | "CHOOSE_ONBOARDING_PATH";
 };
 
 // ─── Flow 1 — Join an existing business ───────────────────────────────────
@@ -84,6 +85,21 @@ export type InitialInvitee = {
   email: string;
   role?: "ADMIN" | "MEMBER" | "GUEST";
 };
+
+/** Request/response for the self-service instant org-creation endpoint. */
+export type CreateOrganizationRequest = {
+  name: string;
+  slug: string;
+  invitees?: InitialInvitee[];
+};
+
+export type CreateOrganizationResponse = {
+  organizationId: string;
+  name: string;
+  slug: string;
+  membershipId: string;
+};
+
 
 export type SubmitOrgCreationRequest = {
   name: string;
@@ -217,6 +233,21 @@ export const onboardingApi = {
       .then((r) => r.data),
 
   // ── Flow 2 ─────────────────────────────────────────────────────────────
+
+  /**
+   * Self-service instant org creation — no admin approval required.
+   * Creates the org and the caller's OWNER membership in one transaction.
+   * The SPA must persist the returned organizationId + slug into the
+   * session store before navigating to /console.
+   */
+  createOrganization: (payload: CreateOrganizationRequest) =>
+    api
+      .post<CreateOrganizationResponse>(
+        "/api/v1/onboarding/create-organization",
+        payload,
+      )
+      .then((r) => r.data),
+
   submitOrgCreationRequest: (payload: SubmitOrgCreationRequest) =>
     api
       .post<OrgCreationRequestDTO>(

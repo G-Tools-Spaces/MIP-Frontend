@@ -76,7 +76,10 @@ export default function JoinBusinessPage() {
       }),
     onSuccess: () => {
       toast.success("Join request sent — your admin has been notified.");
-      router.push("/onboarding/status");
+      // Route to the post-org MFA setup step. After setup (or skip),
+      // the user lands in /console; from there, if still pending they'll
+      // see the pending-membership state.
+      router.push("/onboarding/setup-mfa");
     },
     onError: (error: ApiError) =>
       setFormError(error.problem.detail ?? error.problem.title),

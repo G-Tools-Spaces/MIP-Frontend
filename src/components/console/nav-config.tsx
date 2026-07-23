@@ -12,6 +12,7 @@ import {
   Server,
   Radio,
   Inbox,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,6 +54,7 @@ export const consoleNav: NavGroup[] = [
     items: [
       { label: "Settings", href: "/console/settings", icon: Building2 },
       { label: "Invitations", href: "/console/invitations", icon: Mail },
+      { label: "Join Requests", href: "/console/join-requests", icon: UserPlus },
       { label: "Custom Domains", href: "/console/domains", icon: Globe },
     ],
   },

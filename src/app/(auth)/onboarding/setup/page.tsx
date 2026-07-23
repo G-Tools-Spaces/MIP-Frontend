@@ -13,16 +13,20 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldError, FieldHint } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { Select } from "@/components/ui/select";
 import { onboardingApi } from "@/lib/api/endpoints/onboarding";
 import { ApiError } from "@/lib/api/problem";
+import { useSession } from "@/stores/session-store";
 
 /**
- * Flow 2 — Setup your business. Submits an OrganizationCreationRequest
- * which lands in the Global Admin queue. See ONBOARDING_FLOW.md §4.
+ * Flow 2 — Setup your business.
+ *
+ * Creates the organization instantly (no admin approval queue). The caller
+ * becomes the OWNER in the same backend transaction, the SPA session is
+ * updated with the new org context, and the user is routed directly to
+ * /console — ready to use the product immediately.
  */
 
 const inviteeSchema = z.object({
@@ -41,33 +45,6 @@ const schema = z.object({
       /^[a-z0-9]+(-[a-z0-9]+)*$/,
       "Only lowercase letters, numbers and hyphens",
     ),
-  businessEmail: z
-    .string()
-    .trim()
-    .email("Enter a valid business email")
-    .optional()
-    .or(z.literal("")),
-  businessPhone: z
-    .string()
-    .trim()
-    .regex(/^\+?[1-9][0-9]{6,14}$/, "Use E.164 format")
-    .optional()
-    .or(z.literal("")),
-  businessWebsite: z
-    .string()
-    .trim()
-    .max(255)
-    .optional()
-    .or(z.literal("")),
-  businessSize: z.string().trim().max(50).optional().or(z.literal("")),
-  businessIndustry: z.string().trim().max(100).optional().or(z.literal("")),
-  businessCountry: z
-    .string()
-    .trim()
-    .length(2, "Use ISO 3166-1 alpha-2, e.g. IN")
-    .optional()
-    .or(z.literal("")),
-  justification: z.string().trim().max(2000).optional().or(z.literal("")),
   invitees: z.array(inviteeSchema).max(20, "Up to 20 invitees at a time"),
 });
 
@@ -75,6 +52,7 @@ type Values = z.infer<typeof schema>;
 
 export default function SetupBusinessPage() {
   const router = useRouter();
+  const setOrganization = useSession((s) => s.setOrganization);
   const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<Values>({
@@ -82,37 +60,25 @@ export default function SetupBusinessPage() {
     defaultValues: {
       name: "",
       slug: "",
-      businessEmail: "",
-      businessPhone: "",
-      businessWebsite: "",
-      businessSize: "",
-      businessIndustry: "",
-      businessCountry: "",
-      justification: "",
       invitees: [],
     },
   });
   const invitees = useFieldArray({ control: form.control, name: "invitees" });
 
-  const submitMutation = useMutation({
+  const createMutation = useMutation({
     mutationFn: (values: Values) =>
-      onboardingApi.submitOrgCreationRequest({
+      onboardingApi.createOrganization({
         name: values.name,
         slug: values.slug,
-        businessEmail: values.businessEmail || undefined,
-        businessPhone: values.businessPhone || undefined,
-        businessWebsite: values.businessWebsite || undefined,
-        businessSize: values.businessSize || undefined,
-        businessIndustry: values.businessIndustry || undefined,
-        businessCountry: values.businessCountry?.toUpperCase() || undefined,
-        justification: values.justification || undefined,
         invitees: values.invitees.length ? values.invitees : undefined,
       }),
-    onSuccess: () => {
-      toast.success(
-        "Business submitted for review. You'll be notified when a platform admin decides.",
-      );
-      router.push("/onboarding/status");
+    onSuccess: (data) => {
+      // Bind the session to the freshly-created organization so that
+      // org-scoped pages (/console, users, roles, …) have full context.
+      setOrganization(data.organizationId, data.slug);
+      toast.success(`"${data.name}" created! Let's secure your account.`);
+      // Route to the post-org MFA setup step before entering the console.
+      router.push("/onboarding/setup-mfa");
     },
     onError: (error: ApiError) =>
       setFormError(error.problem.detail ?? error.problem.title),
@@ -122,17 +88,16 @@ export default function SetupBusinessPage() {
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Setup your business
+          Create your workspace
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Tell us about your business. A platform admin will review your
-          request; once approved, you&rsquo;ll be the owner of the new
-          organization.
+          Your organization will be created instantly. You&rsquo;ll be the
+          owner and can invite your team right away.
         </p>
       </header>
 
       {formError && (
-        <Alert variant="error" title="Couldn't submit request">
+        <Alert variant="error" title="Couldn't create organization">
           {formError}
         </Alert>
       )}
@@ -140,7 +105,7 @@ export default function SetupBusinessPage() {
       <form
         onSubmit={form.handleSubmit((v) => {
           setFormError(null);
-          submitMutation.mutate(v);
+          createMutation.mutate(v);
         })}
         className="space-y-5"
         noValidate
@@ -175,85 +140,7 @@ export default function SetupBusinessPage() {
               <FieldHint>Used in URLs, e.g. app.meicrypt.com/{"{slug}"}</FieldHint>
             )}
           </Field>
-
-          <Field>
-            <Label htmlFor="businessEmail">Business email</Label>
-            <Input
-              id="businessEmail"
-              type="email"
-              placeholder="ops@acme.com"
-              invalid={!!form.formState.errors.businessEmail}
-              {...form.register("businessEmail")}
-            />
-            <FieldError
-              message={form.formState.errors.businessEmail?.message}
-            />
-          </Field>
-
-          <Field>
-            <Label htmlFor="businessPhone">Business phone</Label>
-            <Input
-              id="businessPhone"
-              placeholder="+919876543210"
-              invalid={!!form.formState.errors.businessPhone}
-              {...form.register("businessPhone")}
-            />
-            <FieldError
-              message={form.formState.errors.businessPhone?.message}
-            />
-          </Field>
-
-          <Field>
-            <Label htmlFor="businessWebsite">Website</Label>
-            <Input
-              id="businessWebsite"
-              placeholder="https://acme.com"
-              {...form.register("businessWebsite")}
-            />
-          </Field>
-
-          <Field>
-            <Label htmlFor="businessCountry">Country (ISO)</Label>
-            <Input
-              id="businessCountry"
-              placeholder="IN"
-              maxLength={2}
-              invalid={!!form.formState.errors.businessCountry}
-              {...form.register("businessCountry")}
-            />
-            <FieldError
-              message={form.formState.errors.businessCountry?.message}
-            />
-          </Field>
-
-          <Field>
-            <Label htmlFor="businessSize">Company size</Label>
-            <Input
-              id="businessSize"
-              placeholder="e.g. 11-50"
-              {...form.register("businessSize")}
-            />
-          </Field>
-
-          <Field>
-            <Label htmlFor="businessIndustry">Industry</Label>
-            <Input
-              id="businessIndustry"
-              placeholder="Fintech"
-              {...form.register("businessIndustry")}
-            />
-          </Field>
         </div>
-
-        <Field>
-          <Label htmlFor="justification">Why do you need this?</Label>
-          <Textarea
-            id="justification"
-            rows={3}
-            placeholder="Optional — briefly describe how you'll use MeiCrypt."
-            {...form.register("justification")}
-          />
-        </Field>
 
         {/* Invitees */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
@@ -261,8 +148,7 @@ export default function SetupBusinessPage() {
             <div>
               <h2 className="text-sm font-semibold">Invite your team (optional)</h2>
               <p className="text-xs text-slate-500">
-                We&rsquo;ll materialise invitations the moment your business is
-                approved.
+                Invitations are sent the moment your workspace is created.
               </p>
             </div>
             <Button
@@ -334,9 +220,9 @@ export default function SetupBusinessPage() {
             type="submit"
             className="flex-1"
             size="lg"
-            loading={submitMutation.isPending}
+            loading={createMutation.isPending}
           >
-            Submit for review
+            Create workspace
           </Button>
         </div>
       </form>

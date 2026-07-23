@@ -86,11 +86,20 @@ export const LoginForm = () => {
       toast.success(`Welcome back, ${data.user.displayName}`);
 
       // Decide the post-login destination.
+      //   • ?registered=1 → brand-new user, always route to onboarding/choose
+      //     regardless of any org the backend resolved (they need to create or
+      //     join their first org before reaching the console).
       //   • ?returnTo=/some/path → honour it (deep-link support).
       //   • The token already carries an org_id → user has an active
       //     membership, send them to the console.
       //   • Otherwise probe /onboarding/me/memberships and route based on
       //     whether they have any ACTIVE memberships.
+      const registered = searchParams.get("registered") === "1";
+      if (registered) {
+        router.push("/onboarding/choose");
+        return;
+      }
+
       const returnTo = searchParams.get("returnTo");
       if (returnTo && returnTo.startsWith("/")) {
         router.push(returnTo);
