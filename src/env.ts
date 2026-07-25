@@ -21,13 +21,13 @@ export const env = {
   /** Public MIP backend base URL (Spring Boot). */
   apiBaseUrl: requiredPublic(
     "NEXT_PUBLIC_API_BASE_URL",
-    "http://localhost:8080",
+    "https://mip-backend-xiqd.onrender.com",
   ),
 
   /** Issuer URL used for OIDC discovery. */
   issuerUrl: requiredPublic(
     "NEXT_PUBLIC_ISSUER_URL",
-    "http://localhost:8080",
+    "https://mip-backend-xiqd.onrender.com",
   ),
 
   /** Application marketing/brand name shown in chrome. */
