@@ -116,8 +116,9 @@ export const RegisterForm = () => {
       }),
     onSuccess: (res) => {
       toast.success("Account verified! Please sign in to continue.");
-      // Redirect to login — TOTP can be set up later from Security settings
-      // after the user has joined or created an organisation.
+      // Redirect to login. After login the user will be routed to
+      // /onboarding/choose to create or join an organisation, then to
+      // TOTP setup from the security settings.
       const q = new URLSearchParams({ registered: "1", email: res.email });
       if (returnTo) q.set("returnTo", returnTo);
       router.push(`/login?${q}`);

@@ -31,6 +31,9 @@ const performRefresh = async (): Promise<void> => {
     tokenType: "Bearer";
     expiresIn: number;
     orgSlug?: string;
+    organizationId?: string;
+    sessionId?: string;
+    userId?: string;
   }>(
     `${env.apiBaseUrl}/api/v1/auth/refresh`,
     {},
@@ -38,11 +41,17 @@ const performRefresh = async (): Promise<void> => {
   );
 
   const now = Date.now();
+  // Preserve the existing user profile and org context from the current
+  // snapshot, but merge in anything the refresh response provides.
+  // This ensures a hard-refresh doesn't lose the user's org binding.
+  const existing = tokenStore.get();
   tokenStore.set({
     accessToken: response.data.accessToken,
     tokenType: "Bearer",
     expiresAt: now + response.data.expiresIn * 1000,
-    orgSlug: response.data.orgSlug,
+    orgSlug: response.data.orgSlug ?? existing?.orgSlug,
+    organizationId: response.data.organizationId ?? existing?.organizationId,
+    user: existing?.user,
   });
 };
 
@@ -116,14 +125,37 @@ const createClient = (): AxiosInstance => {
         return Promise.reject(new ApiError(data));
       }
 
+      // Spring Security's default error body (e.g. 401/403 without a
+      // ProblemDetails handler) looks like:
+      //   { timestamp, status, error, message, path }
+      // Promote it to an ApiError with a sensible title/detail.
+      const httpStatus = error.response?.status ?? 0;
+      if (
+        httpStatus > 0 &&
+        data &&
+        typeof data === "object" &&
+        "status" in data
+      ) {
+        const d = data as Record<string, unknown>;
+        return Promise.reject(
+          new ApiError({
+            title: (d.error as string) ?? error.message ?? "Request failed",
+            status: httpStatus,
+            detail: (d.message as string) ?? undefined,
+          }),
+        );
+      }
+
       return Promise.reject(
         new ApiError({
           title: error.message || "Network error",
-          status: error.response?.status ?? 0,
+          status: httpStatus,
           detail:
             typeof data === "string"
               ? data
-              : "Unable to reach the MeiCrypt Identity service.",
+              : httpStatus === 0
+                ? "Unable to reach the MeiCrypt Identity service."
+                : `Request failed with status ${httpStatus}.`,
         }),
       );
     },

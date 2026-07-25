@@ -86,42 +86,61 @@ export const LoginForm = () => {
       toast.success(`Welcome back, ${data.user.displayName}`);
 
       // Decide the post-login destination.
-      //   • ?registered=1 → brand-new user, always route to onboarding/choose
-      //     regardless of any org the backend resolved (they need to create or
-      //     join their first org before reaching the console).
+      //   • ?registered=1 AND ?returnTo=... → brand-new user arrived via an
+      //     invitation link; honour the returnTo so they land on
+      //     /accept-invitation after sign-in (not on the create-org page).
+      //   • ?registered=1 (no returnTo) → new user with no pending destination;
+      //     route to /onboarding/choose so they create/join their first org.
       //   • ?returnTo=/some/path → honour it (deep-link support).
       //   • The token already carries an org_id → user has an active
       //     membership, send them to the console.
       //   • Otherwise probe /onboarding/me/memberships and route based on
       //     whether they have any ACTIVE memberships.
       const registered = searchParams.get("registered") === "1";
+      const returnTo = searchParams.get("returnTo");
+
       if (registered) {
-        router.push("/onboarding/choose");
+        // If the user came from an invitation link, send them back there.
+        // Otherwise route them to the onboarding chooser.
+        if (returnTo && returnTo.startsWith("/")) {
+          router.push(returnTo);
+        } else {
+          router.push("/onboarding/choose");
+        }
         return;
       }
 
-      const returnTo = searchParams.get("returnTo");
       if (returnTo && returnTo.startsWith("/")) {
         router.push(returnTo);
         return;
       }
 
+      // If the backend already resolved an org at login time (single-membership
+      // auto-resolve, V18+), the access token already carries the org_id claim.
+      // No need to probe /memberships — just navigate to the console.
       if (data.organizationId) {
         router.push("/console");
         return;
       }
 
+      // The user has zero or multiple memberships and the backend couldn't
+      // auto-resolve. Probe /memberships so we can pick the primary org and
+      // reissue the session with the correct org context.
       try {
         const memberships = await onboardingApi.myMemberships();
         const activeMembership = memberships.find(
           (m) => m.status === "ACTIVE",
         );
         if (activeMembership) {
-          // Bind the SPA session to the user's primary active org so that
-          // org-scoped pages (invitations, users, roles, …) don't fall back
-          // to the "No organization context" warning. Without this, the
-          // token store keeps `organizationId = null` and every downstream
-          // `useCurrentOrgId()` returns null.
+          // Re-issue the session bound to the active org. The existing
+          // accessToken still carries org_id=null, so we call setSession
+          // which writes the full snapshot (including organizationId) to
+          // the token store. The next API call will use this org-bound snapshot.
+          // NOTE: The JWT itself still has null org_id here — to fully fix
+          // RBAC we rely on the /auth/refresh auto-rebind that happens on
+          // the next expired-token cycle. For immediate org-scoped calls,
+          // the frontend uses the org context from the token store header
+          // (X-Organization-Slug) which is always set.
           setSession({
             accessToken: data.accessToken,
             expiresIn: data.expiresIn,

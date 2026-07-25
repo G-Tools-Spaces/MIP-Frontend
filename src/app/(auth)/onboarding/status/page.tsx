@@ -12,9 +12,8 @@ import { onboardingApi } from "@/lib/api/endpoints/onboarding";
 import { useSession } from "@/stores/session-store";
 
 /**
- * Read-only dashboard of the current user's pending onboarding activity:
- * outgoing join requests and organization-creation requests. Shown right
- * after the user submits either flow.
+ * Read-only dashboard of the current user's pending organization-creation
+ * requests. Shown when a user needs to wait for platform admin approval.
  *
  * V18+ behaviour: the moment the caller has at least one ACTIVE
  * organization membership we auto-redirect them into the console.
@@ -34,10 +33,6 @@ export default function OnboardingStatusPage() {
   const clearSession = useSession((s) => s.clear);
   const [redirected, setRedirected] = useState(false);
 
-  const joinRequestsQuery = useQuery({
-    queryKey: ["onboarding", "myJoinRequests"],
-    queryFn: () => onboardingApi.listMyJoinRequests(),
-  });
   const creationRequestsQuery = useQuery({
     queryKey: ["onboarding", "myCreationRequests"],
     queryFn: () => onboardingApi.listMyOrgCreationRequests(),
@@ -88,53 +83,10 @@ export default function OnboardingStatusPage() {
           Your onboarding
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Track the join and organization-creation requests you&rsquo;ve made.
-          You&rsquo;ll be redirected to the console automatically as soon as a
-          request is approved.
+          Track your organization setup request. You&rsquo;ll be redirected to
+          the console automatically once it&rsquo;s approved.
         </p>
       </header>
-
-      {/* Join requests */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Join requests
-        </h2>
-        {joinRequestsQuery.isLoading ? (
-          <p className="text-sm text-slate-400">Loading…</p>
-        ) : !joinRequestsQuery.data?.length ? (
-          <p className="text-sm text-slate-400">
-            No join requests yet.{" "}
-            <Link href="/onboarding/join" className="underline">
-              Start one
-            </Link>
-            .
-          </p>
-        ) : (
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-800">
-            {joinRequestsQuery.data.map((r) => (
-              <li key={r.id} className="p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm">
-                    Requested to join org{" "}
-                    <code className="text-xs">
-                      {r.organizationId.slice(0, 8)}…
-                    </code>
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {new Date(r.requestedAt).toLocaleString()}
-                  </p>
-                  {r.decisionReason && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      Reason: {r.decisionReason}
-                    </p>
-                  )}
-                </div>
-                <StatusBadge status={r.status} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
 
       {/* Creation requests */}
       <section className="space-y-3">
@@ -147,7 +99,7 @@ export default function OnboardingStatusPage() {
           <p className="text-sm text-slate-400">
             No requests yet.{" "}
             <Link href="/onboarding/setup" className="underline">
-              Setup a business
+              Set up a business
             </Link>
             .
           </p>
@@ -195,7 +147,7 @@ export default function OnboardingStatusPage() {
           href="/onboarding/choose"
           className="text-xs underline text-slate-500"
         >
-          ← Back to onboarding options
+          ← Back to onboarding
         </Link>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useSession } from "@/stores/session-store";
 import { tokenStore } from "@/lib/auth/token-store";
 import { onboardingApi } from "@/lib/api/endpoints/onboarding";
+import { mfaApi } from "@/lib/api/endpoints/mfa";
 
 /**
  * Client-side auth guard for the (console) route group.
@@ -46,6 +47,8 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
 
   const [mounted, setMounted] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  // null = not yet checked, true/false = result of the MFA factor probe
+  const [mfaReady, setMfaReady] = useState<boolean | null>(null);
 
   useEffect(() => {
     // Runs on the client after hydration - safe to touch browser storage.
@@ -71,6 +74,32 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
     const returnTo = encodeURIComponent(pathname ?? "/console");
     router.replace(`/login?returnTo=${returnTo}`);
   }, [mounted, hydrated, authenticated, pathname, router]);
+
+  // MFA gate: once authenticated, check whether the user has at least one
+  // ACTIVE factor. If not, redirect to /onboarding/setup-mfa so they cannot
+  // reach the console without completing mandatory TOTP enrollment.
+  useEffect(() => {
+    if (!mounted || !hydrated || !authenticated) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const factors = await mfaApi.listFactors();
+        if (cancelled) return;
+        const hasActive = factors.some((f) => f.status === "ACTIVE");
+        setMfaReady(hasActive);
+        if (!hasActive) {
+          router.replace("/onboarding/setup-mfa");
+        }
+      } catch {
+        // If the probe fails (e.g. network error), allow access — don't
+        // block the console indefinitely on a transient API failure.
+        if (!cancelled) setMfaReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, hydrated, authenticated, router]);
 
   // Self-heal: if the caller is authenticated but the session store has no
   // active organization bound (e.g. an older sign-in that predated the
@@ -112,7 +141,7 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
 
   // Server render + first client render (pre-hydration) — always spinner
   // so the server-rendered HTML matches what React sees on the client.
-  if (!mounted || !hydrated || !authenticated) {
+  if (!mounted || !hydrated || !authenticated || mfaReady === null) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-slate-500">
         <Loader2 className="h-5 w-5 animate-spin" />

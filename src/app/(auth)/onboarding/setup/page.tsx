@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +18,8 @@ import { Select } from "@/components/ui/select";
 import { onboardingApi } from "@/lib/api/endpoints/onboarding";
 import { ApiError } from "@/lib/api/problem";
 import { useSession } from "@/stores/session-store";
+import { tokenStore } from "@/lib/auth/token-store";
+import { OnboardingAuthGuard } from "@/components/onboarding/onboarding-auth-guard";
 
 /**
  * Flow 2 — Setup your business.
@@ -52,7 +53,8 @@ type Values = z.infer<typeof schema>;
 
 export default function SetupBusinessPage() {
   const router = useRouter();
-  const setOrganization = useSession((s) => s.setOrganization);
+  const setSession = useSession((s) => s.setSession);
+  const user = useSession((s) => s.user);
   const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<Values>({
@@ -73,18 +75,40 @@ export default function SetupBusinessPage() {
         invitees: values.invitees.length ? values.invitees : undefined,
       }),
     onSuccess: (data) => {
-      // Bind the session to the freshly-created organization so that
-      // org-scoped pages (/console, users, roles, …) have full context.
-      setOrganization(data.organizationId, data.slug);
+      // The backend returns a fresh org-bound access + refresh token pair.
+      // We must replace the stale org-less token in the store so that all
+      // subsequent API calls (e.g. create application) carry the correct
+      // org_id claim and pass RBAC checks without a second login round-trip.
+      const existing = tokenStore.get();
+      setSession({
+        accessToken: data.accessToken,
+        expiresIn: data.expiresIn,
+        organizationId: data.organizationId,
+        orgSlug: data.slug,
+        user: existing?.user ?? {
+          id: user?.id ?? "",
+          email: user?.email ?? "",
+          displayName: user?.displayName ?? "",
+          emailVerified: user?.emailVerified ?? false,
+        },
+      });
       toast.success(`"${data.name}" created! Let's secure your account.`);
       // Route to the post-org MFA setup step before entering the console.
       router.push("/onboarding/setup-mfa");
     },
-    onError: (error: ApiError) =>
-      setFormError(error.problem.detail ?? error.problem.title),
+    onError: (error: ApiError) => {
+      if (error.status === 401 || error.status === 403) {
+        setFormError(
+          "Your session has expired. Please sign in again and try creating your organization.",
+        );
+      } else {
+        setFormError(error.problem.detail ?? error.problem.title);
+      }
+    },
   });
 
   return (
+    <OnboardingAuthGuard>
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -227,13 +251,7 @@ export default function SetupBusinessPage() {
         </div>
       </form>
 
-      <p className="text-xs text-slate-500 pt-2">
-        Rather join an existing org?{" "}
-        <Link href="/onboarding/join" className="underline">
-          Join a business
-        </Link>
-        .
-      </p>
     </div>
+    </OnboardingAuthGuard>
   );
 }

@@ -70,6 +70,8 @@ type BackendLoginResponse = {
     expiresIn: number;
     sessionId: string;
     userId: string;
+    /** The organization the session was bound to at login time (V18+). */
+    organizationId?: string;
   } | null;
   mfaChallenge: {
     challengeId: string;
@@ -212,7 +214,10 @@ export const authApi = {
       tokenType: "Bearer",
       expiresIn: raw.tokens.expiresIn,
       orgSlug: payload.orgSlug,
-      organizationId,
+      // Prefer the organizationId the backend resolved at login time (V18+)
+      // over the one derived from the optional orgSlug. This ensures the
+      // access token's org_id claim matches, so @rbac.sameOrganization() passes.
+      organizationId: raw.tokens.organizationId ?? organizationId,
       user: profile,
     };
   },

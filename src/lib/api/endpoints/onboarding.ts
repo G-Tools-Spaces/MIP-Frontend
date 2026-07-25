@@ -98,6 +98,12 @@ export type CreateOrganizationResponse = {
   name: string;
   slug: string;
   membershipId: string;
+  /** Fresh org-bound access token — replace the org-less token in the session store. */
+  accessToken: string;
+  /** Fresh refresh token corresponding to the new access token. */
+  refreshToken: string;
+  /** Access token TTL in seconds. */
+  expiresIn: number;
 };
 
 

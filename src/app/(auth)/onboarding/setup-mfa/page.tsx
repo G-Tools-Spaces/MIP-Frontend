@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, ShieldCheck, SkipForward } from "lucide-react";
+import { Shield } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,12 +18,12 @@ import { mfaApi } from "@/lib/api/endpoints/mfa";
 import { ApiError } from "@/lib/api/problem";
 
 /**
- * Post-org MFA setup step.
+ * Mandatory TOTP setup step shown immediately after a user creates their
+ * organization. MFA is required — there is no skip option.
  *
- * Shown right after a user creates or joins an organisation.
- * They can set up TOTP here or skip — either way they land in /console.
- * This page uses the normal access token (from session store) to call
- * the TOTP enrolment endpoints — no separate setupToken needed.
+ * Steps:
+ *   1. "enrol"  — instructions + generate QR code button
+ *   2. "verify" — scan QR, enter 6-digit code to confirm
  */
 
 const totpSchema = z.object({
@@ -33,17 +34,17 @@ const totpSchema = z.object({
 });
 type TotpValues = z.infer<typeof totpSchema>;
 
-type Step = "prompt" | "enrol" | "verify";
+type Step = "enrol" | "verify";
 
 export default function OnboardingSetupMfaPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("prompt");
+  const [step, setStep] = useState<Step>("enrol");
   const [formError, setFormError] = useState<string | null>(null);
   const [enrollmentSecret, setEnrollmentSecret] = useState<string | null>(null);
   const [enrollmentFactorId, setEnrollmentFactorId] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
-  // Start TOTP enrollment
+  // Start TOTP enrollment — calls backend to generate secret + QR code
   const startMutation = useMutation({
     mutationFn: () => mfaApi.enrollTotp(),
     onSuccess: (data) => {
@@ -57,7 +58,7 @@ export default function OnboardingSetupMfaPage() {
     },
   });
 
-  // Verify TOTP and activate factor
+  // Verify the 6-digit code to activate the factor
   const { register, handleSubmit, formState: { errors } } = useForm<TotpValues>({
     resolver: zodResolver(totpSchema),
   });
@@ -66,12 +67,14 @@ export default function OnboardingSetupMfaPage() {
     mutationFn: (values: TotpValues) =>
       mfaApi.verifyTotp({ factorId: enrollmentFactorId!, code: values.code }),
     onSuccess: () => {
-      toast.success("TOTP authenticator set up successfully!");
+      toast.success("Two-factor authentication enabled. Your account is secure!");
       router.push("/console");
     },
     onError: (error: ApiError) => {
       if (error.status === 400 || error.status === 422) {
-        setFormError("That code is incorrect. Check your authenticator app and try again.");
+        setFormError(
+          "That code is incorrect. Check your authenticator app and try again.",
+        );
       } else {
         setFormError(error.problem.detail ?? error.problem.title);
       }
@@ -87,12 +90,12 @@ export default function OnboardingSetupMfaPage() {
             <Shield className="h-5 w-5 text-indigo-600" />
           </span>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Secure your account
+            Set up two-factor authentication
           </h1>
         </div>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Add two-factor authentication to protect your account. You can always
-          do this later from your Security settings.
+          To protect your account and organization, you must set up a TOTP
+          authenticator app before accessing the console.
         </p>
       </header>
 
@@ -102,72 +105,39 @@ export default function OnboardingSetupMfaPage() {
         </Alert>
       )}
 
-      {/* Step: prompt */}
-      {step === "prompt" && (
-        <div className="space-y-4">
-          <button
-            type="button"
-            onClick={() => {
-              setFormError(null);
-              setStep("enrol");
-            }}
-            className="group w-full flex items-start gap-4 rounded-xl border border-slate-200 dark:border-slate-800 p-5 text-left transition hover:border-indigo-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
-          >
-            <span className="mt-1 flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40">
-              <ShieldCheck className="h-5 w-5" />
-            </span>
-            <span className="flex-1">
-              <span className="block text-base font-semibold">Set up TOTP authenticator</span>
-              <span className="mt-1 block text-sm text-slate-600 dark:text-slate-400">
-                Use Google Authenticator, Authy, or any TOTP app. Scan a QR code
-                and confirm with a 6-digit code.
-              </span>
-            </span>
-          </button>
+      {/* Step 1: instructions + generate QR */}
+      {step === "enrol" && (
+        <div className="space-y-5">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-5 space-y-3">
+            <h2 className="text-sm font-semibold">How to set up</h2>
+            <ol className="space-y-2 text-sm text-slate-700 dark:text-slate-300 list-decimal list-inside">
+              <li>
+                Install an authenticator app on your phone — e.g.{" "}
+                <strong>Google Authenticator</strong>, <strong>Authy</strong>, or{" "}
+                <strong>1Password</strong>.
+              </li>
+              <li>Click <strong>Generate QR code</strong> below.</li>
+              <li>Open your app, tap <em>Add account</em>, and scan the QR code.</li>
+              <li>Enter the 6-digit code your app shows to confirm.</li>
+            </ol>
+          </div>
 
           <Button
             type="button"
-            variant="ghost"
-            block
-            onClick={() => router.push("/console")}
-            className="text-slate-500"
+            className="w-full"
+            size="lg"
+            loading={startMutation.isPending}
+            onClick={() => {
+              setFormError(null);
+              startMutation.mutate();
+            }}
           >
-            <SkipForward className="h-4 w-4 mr-2" />
-            Skip for now — I&apos;ll set this up later
+            Generate QR code
           </Button>
         </div>
       )}
 
-      {/* Step: enrol (instructions + start) */}
-      {step === "enrol" && (
-        <div className="space-y-4">
-          <ol className="space-y-2 text-sm text-slate-700 dark:text-slate-300 list-decimal list-inside">
-            <li>Install an authenticator app (Google Authenticator, Authy, etc.)</li>
-            <li>Click &quot;Generate QR code&quot; below</li>
-            <li>Scan the QR code with your app</li>
-            <li>Enter the 6-digit code to confirm</li>
-          </ol>
-          <div className="flex gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setStep("prompt")}>
-              Back
-            </Button>
-            <Button
-              type="button"
-              className="flex-1"
-              size="lg"
-              loading={startMutation.isPending}
-              onClick={() => {
-                setFormError(null);
-                startMutation.mutate();
-              }}
-            >
-              Generate QR code
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Step: verify */}
+      {/* Step 2: scan QR + enter code */}
       {step === "verify" && (
         <form
           onSubmit={handleSubmit((v) => {
@@ -178,8 +148,10 @@ export default function OnboardingSetupMfaPage() {
           noValidate
         >
           {qrDataUrl && (
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-              <p className="text-sm font-medium">Scan this QR code with your authenticator app</p>
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
+              <p className="text-sm font-medium text-center">
+                Scan this QR code with your authenticator app
+              </p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={qrDataUrl}
@@ -202,7 +174,9 @@ export default function OnboardingSetupMfaPage() {
           )}
 
           <Field>
-            <Label htmlFor="totp-code">Enter the 6-digit code from your app</Label>
+            <Label htmlFor="totp-code">
+              Enter the 6-digit code from your authenticator app
+            </Label>
             <Input
               id="totp-code"
               inputMode="numeric"
@@ -220,7 +194,10 @@ export default function OnboardingSetupMfaPage() {
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setStep("enrol")}
+              onClick={() => {
+                setFormError(null);
+                setStep("enrol");
+              }}
             >
               Back
             </Button>
@@ -233,16 +210,6 @@ export default function OnboardingSetupMfaPage() {
               Confirm &amp; activate
             </Button>
           </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            block
-            onClick={() => router.push("/console")}
-            className="text-slate-500"
-          >
-            Skip for now
-          </Button>
         </form>
       )}
     </div>

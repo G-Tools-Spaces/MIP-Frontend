@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { invitationsApi } from "@/lib/api/endpoints/invitations";
+import { mfaApi } from "@/lib/api/endpoints/mfa";
 import { ApiError } from "@/lib/api/problem";
 import { useSession } from "@/stores/session-store";
 import { tokenStore } from "@/lib/auth/token-store";
@@ -62,13 +63,31 @@ export const AcceptInvitationClient = () => {
         invitationToken: token as string,
         userId: user!.id,
       }),
-    onSuccess: (inv) => {
+    onSuccess: async (inv) => {
       setAcceptedAt(inv.acceptedAt ?? new Date().toISOString());
       toast.success("Invitation accepted");
       // Clear the tokenStore's org binding so ConsoleAuthGuard will re-probe
       // memberships on the next navigation and pick up the new one.
       const snap = tokenStore.get();
       if (snap) tokenStore.set({ ...snap, organizationId: undefined, orgSlug: undefined });
+
+      // If the user has no MFA factors yet, send them to the mandatory TOTP
+      // setup page before entering the console. This covers the invited-user
+      // path where registration happened via the invitation email rather than
+      // the normal register → verify-OTP → setup-MFA flow.
+      try {
+        const factors = await mfaApi.listFactors();
+        const hasActiveFactor = factors.some(
+          (f: { status: string }) => f.status === "ACTIVE",
+        );
+        if (!hasActiveFactor) {
+          router.push("/onboarding/setup-mfa");
+          return;
+        }
+      } catch {
+        // If the factors check fails, fall through to the normal success UI
+        // — the console auth-guard will sort it out.
+      }
     },
   });
 
