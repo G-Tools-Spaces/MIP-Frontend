@@ -151,8 +151,14 @@ export const LoginForm = () => {
             orgSlug: activeMembership.organizationSlug ?? undefined,
             organizationId: activeMembership.organizationId,
           });
+          // User has an org and may already have MFA — send to console.
+          // ConsoleAuthGuard will gate on MFA if needed.
           router.push("/console");
         } else {
+          // No org at all — must go through onboarding first.
+          // Sending to /console here would cause ConsoleAuthGuard to spin
+          // and race between the org self-heal and MFA checks, resulting in
+          // the user landing on /onboarding/setup-mfa before creating an org.
           router.push("/onboarding/choose");
         }
       } catch {

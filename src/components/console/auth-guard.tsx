@@ -78,11 +78,29 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
   // MFA gate: once authenticated, check whether the user has at least one
   // ACTIVE factor. If not, redirect to /onboarding/setup-mfa so they cannot
   // reach the console without completing mandatory TOTP enrollment.
+  //
+  // IMPORTANT: Only enforce this gate when the user already has an org bound.
+  // A brand-new user (no org yet) must first go through /onboarding/choose
+  // → /onboarding/setup (org creation) → /onboarding/setup-mfa.
+  // Without the org check, new users were being shunted directly from login
+  // to /onboarding/setup-mfa and skipping the org-creation step entirely.
   useEffect(() => {
     if (!mounted || !hydrated || !authenticated) return;
     let cancelled = false;
     (async () => {
       try {
+        // First: ensure the user has an org bound. If not, the org-self-heal
+        // effect (below) will pick it up — wait for that probe to complete
+        // before deciding whether to gate on MFA.
+        const snap = tokenStore.get();
+        const hasOrgInStore = !!(snap?.organizationId ?? organizationId);
+        if (!hasOrgInStore) {
+          // No org yet — let the self-heal effect route them to
+          // /onboarding/choose. Don't block on MFA.
+          if (!cancelled) setMfaReady(true);
+          return;
+        }
+
         const factors = await mfaApi.listFactors();
         if (cancelled) return;
         const hasActive = factors.some((f) => f.status === "ACTIVE");
@@ -99,13 +117,12 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       cancelled = true;
     };
-  }, [mounted, hydrated, authenticated, router]);
+  }, [mounted, hydrated, authenticated, organizationId, router]);
 
   // Self-heal: if the caller is authenticated but the session store has no
-  // active organization bound (e.g. an older sign-in that predated the
-  // login-form fix, or a hard refresh mid-onboarding), fetch their
-  // memberships and bind the first ACTIVE one. This prevents org-scoped
-  // pages from falling back to the "No organization context" warning.
+  // active organization bound (e.g. a hard refresh mid-onboarding), fetch
+  // their memberships and bind the first ACTIVE one. If there are no
+  // memberships at all, route to /onboarding/choose so they create one.
   useEffect(() => {
     if (!mounted || !hydrated || !authenticated) return;
     if (organizationId) return;
@@ -118,7 +135,11 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
         const memberships = await onboardingApi.myMemberships();
         if (cancelled) return;
         const active = memberships.find((m) => m.status === "ACTIVE");
-        if (!active) return;
+        if (!active) {
+          // No org at all → new user who hasn't created one yet.
+          router.replace("/onboarding/choose");
+          return;
+        }
         const expiresIn = Math.max(
           1,
           Math.floor((snap.expiresAt - Date.now()) / 1000),
@@ -137,7 +158,7 @@ export const ConsoleAuthGuard: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       cancelled = true;
     };
-  }, [mounted, hydrated, authenticated, organizationId, user, setSession]);
+  }, [mounted, hydrated, authenticated, organizationId, user, setSession, router]);
 
   // Server render + first client render (pre-hydration) — always spinner
   // so the server-rendered HTML matches what React sees on the client.
