@@ -115,24 +115,13 @@ export const RegisterForm = () => {
         code: values.code,
       }),
     onSuccess: (res) => {
-      // nextAction tells us what to do next:
-      //   "SETUP_MFA"              → user must enrol a second factor before login
-      //   "CHOOSE_ONBOARDING_PATH" → no MFA required; proceed to login → onboarding
-      if (res.nextAction === "SETUP_MFA" && res.setupToken) {
-        toast.success("Email verified! Set up two-factor authentication to continue.");
-        const q = new URLSearchParams({
-          setupToken: res.setupToken,
-          email: res.email,
-        });
-        if (returnTo) q.set("returnTo", returnTo);
-        router.push(`/register/setup-mfa?${q}`);
-      } else {
-        toast.success("Account verified! Please sign in to continue.");
-        // Redirect to login → /onboarding/choose (create org) then console.
-        const q = new URLSearchParams({ registered: "1", email: res.email });
-        if (returnTo) q.set("returnTo", returnTo);
-        router.push(`/login?${q}`);
-      }
+      toast.success("Account verified! Please sign in to continue.");
+      // After email verification, always send the user to login.
+      // login-form.tsx checks ?registered=1 and routes to /onboarding/choose
+      // so they can create their org before TOTP is set up.
+      const q = new URLSearchParams({ registered: "1", email: res.email });
+      if (returnTo) q.set("returnTo", returnTo);
+      router.push(`/login?${q}`);
     },
     onError: (error: ApiError) =>
       setFormError(error.problem.detail ?? error.problem.title),
