@@ -258,12 +258,12 @@ export const authApi = {
 
   forgotPassword: (payload: ForgotPasswordRequest) =>
     api
-      .post<void>("/api/v1/auth/forgot-password", payload)
+      .post<void>("/api/v1/password-reset/initiate", { email: payload.email })
       .then((r) => r.data),
 
   resetPassword: (payload: ResetPasswordRequest) =>
     api
-      .post<void>("/api/v1/auth/reset-password", payload)
+      .post<void>("/api/v1/password-reset/reset", payload)
       .then((r) => r.data),
 
   verifyEmail: (payload: VerifyEmailRequest) =>

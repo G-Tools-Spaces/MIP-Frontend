@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,18 +30,24 @@ import { ApiError } from "@/lib/api/problem";
 
 // ── Schemas ───────────────────────────────────────────────────────────────
 
-const detailsSchema = z.object({
-  firstName: z.string().trim().min(2, "Enter your first name").max(100),
-  lastName: z.string().trim().min(1, "Enter your last name").max(100),
-  email: z.string().trim().email("Enter a valid email address"),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(100)
-    .regex(/[A-Z]/, "Include at least one uppercase letter")
-    .regex(/[a-z]/, "Include at least one lowercase letter")
-    .regex(/[0-9]/, "Include at least one number"),
-});
+const detailsSchema = z
+  .object({
+    firstName: z.string().trim().min(2, "Enter your first name").max(100),
+    lastName: z.string().trim().min(1, "Enter your last name").max(100),
+    email: z.string().trim().email("Enter a valid email address"),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(100)
+      .regex(/[A-Z]/, "Include at least one uppercase letter")
+      .regex(/[a-z]/, "Include at least one lowercase letter")
+      .regex(/[0-9]/, "Include at least one number"),
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 type DetailsValues = z.infer<typeof detailsSchema>;
 
@@ -73,6 +80,8 @@ export const RegisterForm = () => {
   const [step, setStep] = useState<Step>("details");
   const [formError, setFormError] = useState<string | null>(null);
   const [started, setStarted] = useState<StartedContext | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // ── Step 1 — details + issue OTP ─────────────────────────────────────
 
@@ -83,6 +92,7 @@ export const RegisterForm = () => {
       lastName: "",
       email: "",
       password: "",
+      confirmPassword: "",
     },
   });
 
@@ -151,7 +161,9 @@ export const RegisterForm = () => {
         <form
           onSubmit={detailsForm.handleSubmit((v) => {
             setFormError(null);
-            startMutation.mutate(v);
+            // confirmPassword is only for client-side validation; strip before sending
+            const { confirmPassword: _confirm, ...payload } = v;
+            startMutation.mutate(payload as DetailsValues);
           })}
           className="space-y-4"
           noValidate
@@ -203,13 +215,27 @@ export const RegisterForm = () => {
 
           <Field>
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              invalid={!!detailsForm.formState.errors.password}
-              {...detailsForm.register("password")}
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                invalid={!!detailsForm.formState.errors.password}
+                {...detailsForm.register("password")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-2 flex items-center px-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
             {detailsForm.formState.errors.password ? (
               <FieldError
                 message={detailsForm.formState.errors.password.message}
@@ -219,6 +245,34 @@ export const RegisterForm = () => {
                 At least 8 characters, with upper, lower &amp; a number.
               </FieldHint>
             )}
+          </Field>
+
+          <Field>
+            <Label htmlFor="confirmPassword">Confirm password</Label>
+            <div className="relative">
+              <Input
+                id="confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                autoComplete="new-password"
+                invalid={!!detailsForm.formState.errors.confirmPassword}
+                {...detailsForm.register("confirmPassword")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                className="absolute inset-y-0 right-2 flex items-center px-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+            <FieldError
+              message={detailsForm.formState.errors.confirmPassword?.message}
+            />
           </Field>
 
           <Button
