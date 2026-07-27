@@ -29,6 +29,10 @@ export const QueryProvider: React.FC<{ children: React.ReactNode }> = ({
           },
           mutations: {
             retry: false,
+            // Prevent unhandled mutation errors from bubbling to the React
+            // error boundary. Every mutation should handle errors via its
+            // own onError callback or by inspecting mutation.isError.
+            throwOnError: false,
           },
         },
       }),

@@ -27,6 +27,17 @@ const schema = z.object({
 
 type Values = z.infer<typeof schema>;
 
+const extractMessage = (error: unknown): string => {
+  if (error instanceof ApiError) {
+    if (error.status === 0) {
+      return "Cannot reach the identity service. Check your connection.";
+    }
+    return error.problem?.detail ?? error.problem?.title ?? error.message;
+  }
+  if (error instanceof Error) return error.message;
+  return "An unexpected error occurred. Please try again.";
+};
+
 export const ForgotPasswordForm = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -40,14 +51,8 @@ export const ForgotPasswordForm = () => {
   const mutation = useMutation({
     mutationFn: (values: Values) => authApi.forgotPassword(values),
     onSuccess: () => setSent(true),
-    onError: (error: ApiError) => {
-      if (error.status === 0) {
-        setFormError(
-          "Cannot reach the identity service. Check your connection.",
-        );
-      } else {
-        setFormError(error.problem.detail ?? error.problem.title);
-      }
+    onError: (error: unknown) => {
+      setFormError(extractMessage(error));
     },
   });
 
