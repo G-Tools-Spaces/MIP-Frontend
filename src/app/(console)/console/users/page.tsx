@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -40,7 +41,9 @@ const statusTone: Record<UserStatus, Parameters<typeof Badge>[0]["tone"]> = {
 export default function UsersPage() {
   const orgId = useCurrentOrgId();
   const qc = useQueryClient();
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  // Pre-populate the search box if the topbar search navigated here with ?search=
+  const [query, setQuery] = useState(() => searchParams.get("search") ?? "");
 
   const usersQuery = useQuery({
     queryKey: ["users", orgId],

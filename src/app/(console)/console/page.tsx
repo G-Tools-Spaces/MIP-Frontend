@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Users,
   ShieldCheck,
@@ -8,6 +9,10 @@ import {
   ScrollText,
   ArrowUpRight,
   Sparkles,
+  UserPlus,
+  AppWindow,
+  Settings,
+  FileKey2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -21,6 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
 import { useSession } from "@/stores/session-store";
 import { usersApi } from "@/lib/api/endpoints/users";
 import { rbacApi } from "@/lib/api/endpoints/rbac";
@@ -39,6 +45,7 @@ export default function ConsoleDashboardPage() {
   const orgSlug = useSession((s) => s.orgSlug);
   const organizationId = useSession((s) => s.organizationId);
   const hasOrg = Boolean(organizationId);
+  const router = useRouter();
 
   // Active users count (falls back to full user list length if the count
   // endpoint isn't available for the caller's permissions).
@@ -95,11 +102,54 @@ export default function ConsoleDashboardPage() {
         }
         actions={
           <>
-            <Button variant="outline">View docs</Button>
-            <Button>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Quick actions
+            <Button
+              variant="outline"
+              onClick={() =>
+                window.open("https://github.com/G-Tools-Spaces/MIP-Backend/blob/main/MIP_INTEGRATION_GUIDE.md", "_blank")
+              }
+            >
+              View docs
             </Button>
+            <Dropdown
+              trigger={
+                <Button>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Quick actions
+                </Button>
+              }
+              align="end"
+              className="min-w-[14rem]"
+            >
+              {(close) => (
+                <>
+                  <DropdownItem
+                    onClick={() => { close(); router.push("/console/invitations"); }}
+                  >
+                    <UserPlus className="mr-2 h-4 w-4 text-slate-400" />
+                    Invite teammate
+                  </DropdownItem>
+                  <DropdownItem
+                    onClick={() => { close(); router.push("/console/applications"); }}
+                  >
+                    <AppWindow className="mr-2 h-4 w-4 text-slate-400" />
+                    Register application
+                  </DropdownItem>
+                  <DropdownItem
+                    onClick={() => { close(); router.push("/console/roles"); }}
+                  >
+                    <FileKey2 className="mr-2 h-4 w-4 text-slate-400" />
+                    Create role
+                  </DropdownItem>
+                  <DropdownSeparator />
+                  <DropdownItem
+                    onClick={() => { close(); router.push("/console/settings"); }}
+                  >
+                    <Settings className="mr-2 h-4 w-4 text-slate-400" />
+                    Organization settings
+                  </DropdownItem>
+                </>
+              )}
+            </Dropdown>
           </>
         }
       />

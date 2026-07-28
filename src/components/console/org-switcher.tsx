@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Dropdown, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ import { useSession } from "@/stores/session-store";
 export const OrgSwitcher = () => {
   const orgSlug = useSession((s) => s.orgSlug);
   const displayOrg = orgSlug ?? "your-org";
+  const router = useRouter();
 
   return (
     <Dropdown
@@ -50,7 +52,12 @@ export const OrgSwitcher = () => {
             <Check className="h-4 w-4 text-indigo-600" />
           </DropdownItem>
           <DropdownSeparator />
-          <DropdownItem onClick={close}>
+          <DropdownItem
+            onClick={() => {
+              close();
+              router.push("/onboarding/setup");
+            }}
+          >
             <Plus className="h-4 w-4 text-slate-400" />
             Create organization
           </DropdownItem>
